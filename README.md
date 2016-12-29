@@ -1,6 +1,10 @@
 # cmdpack
 > python package for cmd run
 
+### Release History
+* Dec 29th 2016 Release 0.1.8 to make expand the call for run_command_callback and give the long output handle ok
+
+
 ### simple example
 ```python
 import cmdpack

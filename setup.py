@@ -2,7 +2,7 @@
 from setuptools import setup
 
 setup(name='cmdpack',
-	version='0.1.4',
+	version='0.1.8',
 	description='command call back filter package',
 	url='http://github.com/jeppeter/cmdpack',
 	author='jeppeter Wang',
