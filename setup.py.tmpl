@@ -1,13 +1,13 @@
 #!/usr/bin/python
 from setuptools import setup
+import os
 
 setup(name='cmdpack',
-	version='0.1.8',
-	description='command call back filter package',
+	version=%VERSIONNUM%,
+	description='cmd run packages',
 	url='http://github.com/jeppeter/cmdpack',
 	author='jeppeter Wang',
 	author_email='jeppeter@gmail.com',
 	license='MIT',
 	packages=['cmdpack'],
-	keyword = ['commandline'],
 	zip_safe=False)
