@@ -164,6 +164,37 @@ def run_command_callback(cmd,callback,ctx,stdoutfile=subprocess.PIPE,stderrfile=
         p = None
     return exitcode
 
+class _StoreLines(object):
+    def __init__(self):
+        self.__lines = []
+        return
+
+    def store_line(self,rl):
+        self.__lines.append(rl)
+        return
+
+    def get_outs(self):
+        return self.__lines
+
+def _call_out_Storeline(rl,ctx):
+    ctx.store_line(rl)
+    return
+
+def run_cmd_output(cmd,stdout=True,stderr=False,shellmode=True,copyenv=None):
+    if stdout:
+        stdoutfile=subprocess.PIPE
+    else:
+        stdoutfile=open(os.devnull,'wb')
+
+    if stderr:
+        stderrfile=subprocess.PIPE
+    else:
+        stderrfile=open(os.devnull,'wb')
+    store = _StoreLines()
+    run_command_callback(cmd,_call_out_Storeline,store,stdoutfile,stderrfile,shellmode,copyenv)
+    return store.get_outs()
+
+
 
 ##importdebugstart
 import unittest
@@ -347,6 +378,46 @@ class debug_cmpack_test_case(unittest.TestCase):
         self.assertEqual(len(self.__testlines),1)
         self.assertEqual(self.__testlines[0],'cc bb')
         return
+
+    def test_A008(self):
+        cmd = []
+        cmd.append('%s'%(sys.executable))
+        cmd.append('%s'%(__file__))
+        cmd.append('echoout')
+        cmd.append('cc')
+        cmd.append('bb')
+        idx= 0
+        for l in run_cmd_output(cmd):
+            if idx == 0:
+                self.assertEqual(l,'cc bb')
+            idx += 1
+        self.assertEqual(idx,1)
+        return
+
+    def test_A009(self):
+        cmds = []
+        cmds.append(sys.executable)
+        cmds.append(__file__)
+        cmds.append('cmderr')
+        cmds.append('001')
+        cmds.append('002')
+        cmds.append('003')
+        cmds.append('004')
+        idx = 0
+        for l in run_cmd_output(cmds,False,True):
+            if idx == 0:
+                self.assertEqual(l,'001')
+            elif idx == 1:
+                self.assertEqual(l,'002')
+            elif idx == 2:
+                self.assertEqual(l,'003')
+            elif idx == 3:
+                self.assertEqual(l,'004')
+            idx +=1
+        self.assertEqual(idx,4)
+        return
+
+
 
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__),'..','..')))

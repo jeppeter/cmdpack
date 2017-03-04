@@ -2,6 +2,7 @@
 > python package for cmd run
 
 ### Release History
+* Mar 4th 2017 Release 0.2.2 to add new function run_cmd_output
 * Feb 14th 2017 Release 0.2.0 to fixup bug when call shell mode not in multiple args
 * Dec 29th 2016 Release 0.1.8 to make expand the call for run_command_callback and give the long output handle ok
 
@@ -50,4 +51,44 @@ ok
 ```
 
 > this package ,just to make the cmdpack as filter out
+
+## run out
+```python
+import cmdpack
+import sys
+
+
+def test_outline():
+    cmds = []
+    cmds.append('%s'%(sys.executable))
+    cmds.append(__file__)
+    cmds.append('cmdout')
+    cmds.append('hello')
+    cmds.append('world')
+    for l in cmdpack.run_cmd_output(cmds):
+        print('%s'%(l))
+    return
+
+def cmdoutput(args):
+    for c in args:
+        print('%s'%(c))
+    sys.exit(0)
+    return
+
+def main():
+    if len(sys.argv) >= 2 and sys.argv[1] == 'cmdout':
+        cmdoutput(sys.argv[2:])
+        return
+    test_outline()
+    return
+
+if __name__ == '__main__':
+    main()
+```
+
+> shell output
+```shell
+hello
+world
+```
 

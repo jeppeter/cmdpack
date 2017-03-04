@@ -39,7 +39,7 @@ import subprocess
 import platform
 import random
 import time
-from cmdpack import run_cmd_wait,run_read_cmd,run_command_callback
+from cmdpack import run_cmd_wait,run_read_cmd,run_command_callback,run_cmd_output
 from cmdpack import __version__ as cmdpack_version
 from cmdpack import __version_info__ as cmdpack_version_info
 
