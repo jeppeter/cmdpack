@@ -43,126 +43,164 @@ def run_read_cmd(cmd,stdoutfile=subprocess.PIPE,stderrfile=subprocess.PIPE,shell
     p = subprocess.Popen(cmds,stdout=stdoutfile,stderr=stderrfile,shell=shellmode,env=copyenv)
     return p
 
-def __trans_to_string(s):
-    if sys.version[0] == '3':
-        encodetype = ['UTF-8','latin-1']
-        idx=0
-        while idx < len(encodetype):
+
+
+class _CmdRunObject(object):
+    def __trans_to_string(self,s):
+        if sys.version[0] == '3':
+            encodetype = ['UTF-8','latin-1']
+            idx=0
+            while idx < len(encodetype):
+                try:
+                    return s.decode(encoding=encodetype[idx])
+                except:
+                    idx += 1
+            raise Exception('not valid bytes (%s)'%(repr(s)))
+        return s
+    def __enqueue_output(self,out, queue,description,endq):
+        for line in iter(out.readline, b''):
+            transline = self.__trans_to_string(line)
+            transline = transline.rstrip('\r\n')
+            queue.put(transline)
+        endq.put('done')
+        endq.task_done()
+        return
+
+    def __prepare_out(self):
+        if self.__p is not None:
+            if self.recvq is None:
+                self.recvq = Queue.Queue()
+            self.endout = Queue.Queue()
+            self.tout = threading.Thread(target=self.__enqueue_output,args=(self.__p.stdout,self.recvq,'stdout',self.endout))
+        return
+
+    def __prepare_err(self):
+        if self.__p.stderr is not None:
+            if self.recvq is None:
+                self.recvq = Queue.Queue()
+            self.enderr = Queue.Queue()
+            self.terr = threading.Thread(target=self.__enqueue_output,args=(self.__p.stderr,self.recvq,'stderr',self.enderr))
+        return
+
+    def __start_out(self):
+        if self.tout is not None:
+            self.tout.start()
+            self.outended = False
+        return
+
+    def __start_err(self):
+        if self.terr is not None:
+            self.terr.start()
+            self.errended = False
+        return
+
+    def __init__(self,cmd,stdoutfile,stderrfile,shellmode,copyenv):
+        self.__p = run_read_cmd(cmd,stdoutfile,stderrfile,shellmode,copyenv)
+        self.terr = None
+        self.tout = None
+        self.endout = None
+        self.outended = True
+        self.errended = True
+        self.recvq = None
+        self.__prepare_out()
+        self.__prepare_err()
+        self.__start_out()
+        self.__start_err()
+        self.__exitcode = 0
+        return
+
+    def __wait_err(self):
+        if self.terr is not None:
+            self.terr.join()
+            self.terr = None
+        return
+
+    def __wait_out(self):
+        if self.tout is not None:
+            self.tout.join()
+            self.tout = None
+
+    def __wait_recvq(self):
+        if self.recvq is not None:
+            assert(self.recvq.empty())
+            # nothing to be done
+            self.recvq = None
+        return
+
+    def __get_exitcode(self):
+        exitcode = self.__exitcode
+        if self.__p is not None:
+            while True:
+                # wait 
+                pret = self.__p.poll()
+                if pret is not None:
+                    exitcode = pret
+                    logging.info('exitcode %d'%(exitcode))
+                    break
+                # wait for a time
+                logging.info('will wait')
+                time.sleep(0.1)
+            if self.__p.stdout is not None:
+                self.__p.stdout.close()
+                self.__p.stdout = None
+            if self.__p.stderr is not None:
+                self.__p.stderr.close()
+                self.__p.stderr = None
+            self.__p = None
+        self.__exitcode = exitcode
+        return exitcode
+
+    def call_readback(self,callback,ctx):
+        if self.__p is None:
+            return
+        while True:
+            if self.errended and self.outended:
+                break
             try:
-                return s.decode(encoding=encodetype[idx])
-            except:
-                idx += 1
-        raise Exception('not valid bytes (%s)'%(repr(s)))
-    return s
+                rl = self.recvq.get_nowait()
+                if callback is not None:
+                    callback(rl,ctx)
+            except Queue.Empty:
+                if not self.errended:
+                    try:
+                        rl = self.enderr.get_nowait()
+                        if rl == 'done':
+                            self.errended = True
+                            self.enderr.join()
+                            self.enderr = None
+                    except Queue.Empty:
+                        pass
+                if not self.outended :
+                    try:
+                        rl = self.endout.get_nowait()
+                        if rl == 'done':
+                            self.outended = True
+                            self.endout.join()
+                            self.endout = None
+                    except Queue.Empty:
+                        pass
+                if not self.errended or not self.outended:
+                    # sleep for a while to get 
+                    time.sleep(0.1)
+        return
 
+    def __clean_resource(self):
+        self.__wait_out()
+        self.__wait_err()
+        self.__wait_recvq()
+        return self.__get_exitcode()
 
-def __enqueue_output(out, queue,description,endq):
-    for line in iter(out.readline, b''):
-        transline = __trans_to_string(line)
-        transline = transline.rstrip('\r\n')
-        queue.put(transline)
-    endq.put('done')
-    endq.task_done()
-    return
+    def get_exitcode(self):
+        return self.__clean_resource()
+
+    def __del__(self):
+        self.__clean_resource()
+        return
 
 def run_command_callback(cmd,callback,ctx,stdoutfile=subprocess.PIPE,stderrfile=None,shellmode=True,copyenv=None):
-    p = run_read_cmd(cmd,stdoutfile,stderrfile,shellmode,copyenv)
-    terr = None
-    tout = None
-    endout = None
-    enderr = None
-    outended = True
-    errended = True
-    recvq = None
-
-    if p.stdout is not None:
-        if recvq is None:
-            recvq = Queue.Queue()
-        endout = Queue.Queue()
-        tout = threading.Thread(target=__enqueue_output, args=(p.stdout, recvq,'stdout',endout))
-
-    if p.stderr is not None:
-        if recvq is None:
-            recvq = Queue.Queue()
-        enderr = Queue.Queue()
-        terr = threading.Thread(target=__enqueue_output,args=(p.stderr,recvq,'stderr',enderr))
-
-    if tout is not None:
-        tout.start()
-        outended = False
-
-    if terr is not None:
-        terr.start()
-        errended = False
-
-    exitcode = -1
-    while True:
-        if errended and outended:
-            break
-        try:
-            rl = recvq.get_nowait()
-            if callback is not None:
-                callback(rl,ctx)
-        except Queue.Empty:
-            if not errended:
-                try:
-                    rl = enderr.get_nowait()
-                    if rl == 'done':
-                        errended = True
-                        enderr.join()
-                        enderr = None
-                except Queue.Empty:
-                    pass
-            if not outended :
-                try:
-                    rl = endout.get_nowait()
-                    if rl == 'done':
-                        outended = True
-                        endout.join()
-                        endout = None
-                except Queue.Empty:
-                    pass
-            if not errended or not outended:
-                # sleep for a while to get 
-                time.sleep(0.1)
-
-    logging.info('over done')
-    if terr is not None:
-        logging.info('terr wait')
-        terr.join()
-        terr = None
-        logging.info('terr done')
-    if tout is not None:
-        logging.info('tout wait')
-        tout.join()
-        tout = None
-        logging.info('tout done')
-    if recvq is not None:
-        assert(recvq.empty())
-        # nothing to be done
-        recvq = None
-        logging.info('recvq done')
-
-
-    if p is not None:
-        while True:
-            # wait 
-            pret = p.poll()
-            if pret is not None:
-                exitcode = pret
-                logging.info('exitcode %d'%(exitcode))
-                break
-            # wait for a time
-            logging.info('will wait')
-            time.sleep(0.1)
-        if p.stdout is not None:
-            p.stdout.close()
-            p.stdout = None
-        if p.stderr is not None:
-            p.stderr.close()
-            p.stderr = None
-        p = None
-    return exitcode
+    cmdobj = _CmdRunObject(cmd,stdoutfile,stderrfile,shellmode,copyenv)
+    cmdobj.call_readback(callback,ctx)
+    return cmdobj.get_exitcode()
 
 class _StoreLines(object):
     def __init__(self):
