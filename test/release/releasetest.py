@@ -180,7 +180,7 @@ def main():
 			"failfast|f" : true,
 			"release<release_handler>##release file##" : {
 				"output|O" : "%s",
-				"importnames|I" : ["debug_cmpack_case"],
+				"importnames|I" : ["debug_cmdpack_case"],
 				"macros|M" : ["##handleoutstart","##handleoutend"]
 			},
 			"test<test_handler>##test mode##" : {

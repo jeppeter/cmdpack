@@ -63,7 +63,6 @@ class _CmdRunObject(object):
     def __enqueue_output(self,out, queue,description,endq):
         for line in iter(out.readline, b''):
             transline = self.__trans_to_string(line)
-            transline = transline.rstrip('\r\n')
             queue.put(transline)
         endq.put('done')
         endq.task_done()
@@ -251,15 +250,26 @@ def run_command_callback(cmd,callback,ctx,stdoutfile=subprocess.PIPE,stderrfile=
 
 
 def run_cmd_output(cmd,stdout=True,stderr=False,shellmode=True,copyenv=None):
-    if stdout:
-        stdoutfile=subprocess.PIPE
+    stdouttype = type(stdout)
+    if isinstance(stdout,bool):
+        if stdout:
+            stdoutfile=subprocess.PIPE
+        else:
+            stdoutfile=open(os.devnull,'wb')
+    elif isinstance(stdout,str) or (sys.version[0] == '2' and isinstance(stdout,unicode)) :
+        stdoutfile=open(stdout,'wb')
     else:
-        stdoutfile=open(os.devnull,'wb')
+        stdoutfile=stdout
 
-    if stderr:
-        stderrfile=subprocess.PIPE
+    if isinstance(stderr,bool):
+        if stderr:
+            stderrfile=subprocess.PIPE
+        else:
+            stderrfile=open(os.devnull,'wb')
+    elif isinstance(stderr,str) or (sys.version[0] == '2' and isinstance(stderr,unicode)):
+        stderrfile=open(stderr,'wb')
     else:
-        stderrfile=open(os.devnull,'wb')
+        stderrfile=stderr
     return _CmdRunObject(cmd,stdoutfile,stderrfile,shellmode,copyenv)
 
 
@@ -335,7 +345,7 @@ def err_time(args):
 ##handleoutend
 
 
-class debug_cmpack_case(unittest.TestCase):
+class debug_cmdpack_case(unittest.TestCase):
     def setUp(self):
         self.__testlines = []
         return
@@ -360,7 +370,7 @@ class debug_cmpack_case(unittest.TestCase):
         run_command_callback(cmd,a001_callback,self)
         logging.info('__testlines %s'%(self.__testlines))
         self.assertEqual(len(self.__testlines),1)
-        self.assertEqual(self.__testlines[0],'001')
+        self.assertEqual(self.__testlines[0].rstrip('\r\n'),'001')
         return
 
     def test_A002(self):
@@ -392,10 +402,10 @@ class debug_cmpack_case(unittest.TestCase):
         cmd = '"%s" "%s" "cmdout" "001" "002" "003" "004"'%(sys.executable,__file__)
         run_command_callback(cmd,a001_callback,self)
         self.assertEqual(len(self.__testlines),4)
-        self.assertEqual(self.__testlines[0], '001')
-        self.assertEqual(self.__testlines[1], '002')
-        self.assertEqual(self.__testlines[2], '003')
-        self.assertEqual(self.__testlines[3], '004')
+        self.assertEqual(self.__testlines[0].rstrip('\r\n'), '001')
+        self.assertEqual(self.__testlines[1].rstrip('\r\n'), '002')
+        self.assertEqual(self.__testlines[2].rstrip('\r\n'), '003')
+        self.assertEqual(self.__testlines[3].rstrip('\r\n'), '004')
         return
 
     def test_A005(self):
@@ -416,10 +426,10 @@ class debug_cmpack_case(unittest.TestCase):
             run_command_callback(cmds,a001_callback,self,stdoutfile=devnullfd,stderrfile=subprocess.PIPE,shellmode=True,copyenv=None)
             logging.info('__testlines %s'%(self.__testlines))
             self.assertEqual(len(self.__testlines),4)
-            self.assertEqual(self.__testlines[0], '001')
-            self.assertEqual(self.__testlines[1], '002')
-            self.assertEqual(self.__testlines[2], '003')
-            self.assertEqual(self.__testlines[3], '004')
+            self.assertEqual(self.__testlines[0].rstrip('\r\n'), '001')
+            self.assertEqual(self.__testlines[1].rstrip('\r\n'), '002')
+            self.assertEqual(self.__testlines[2].rstrip('\r\n'), '003')
+            self.assertEqual(self.__testlines[3].rstrip('\r\n'), '004')
         finally:
             if devnullfd is not None:
                 devnullfd.close()
@@ -442,7 +452,7 @@ class debug_cmpack_case(unittest.TestCase):
             run_command_callback(cmd,a001_callback,self,stdoutfile=devnullfd,stderrfile=subprocess.PIPE,shellmode=True,copyenv=None)
             self.assertEqual(len(self.__testlines),1000)
             for i in range(1000):
-                self.assertEqual(self.__testlines[i],'%d'%(i))
+                self.assertEqual(self.__testlines[i].rstrip('\r\n'),'%d'%(i))
         finally:
             if devnullfd is not None:
                 devnullfd.close()
@@ -459,7 +469,7 @@ class debug_cmpack_case(unittest.TestCase):
         cmd.append('bb')
         retcode = run_command_callback(cmd,a001_callback,self,stdoutfile=subprocess.PIPE,stderrfile=None,shellmode=True,copyenv=None)
         self.assertEqual(len(self.__testlines),1)
-        self.assertEqual(self.__testlines[0],'cc bb')
+        self.assertEqual(self.__testlines[0].rstrip('\r\n'),'cc bb')
         return
 
     def test_A008(self):
@@ -472,7 +482,7 @@ class debug_cmpack_case(unittest.TestCase):
         idx= 0
         for l in run_cmd_output(cmd):
             if idx == 0:
-                self.assertEqual(l,'cc bb')
+                self.assertEqual(l.rstrip('\r\n'),'cc bb')
             idx += 1
         self.assertEqual(idx,1)
         return
@@ -489,13 +499,13 @@ class debug_cmpack_case(unittest.TestCase):
         idx = 0
         for l in run_cmd_output(cmds,False,True):
             if idx == 0:
-                self.assertEqual(l,'001')
+                self.assertEqual(l.rstrip('\r\n'),'001')
             elif idx == 1:
-                self.assertEqual(l,'002')
+                self.assertEqual(l.rstrip('\r\n'),'002')
             elif idx == 2:
-                self.assertEqual(l,'003')
+                self.assertEqual(l.rstrip('\r\n'),'003')
             elif idx == 3:
-                self.assertEqual(l,'004')
+                self.assertEqual(l.rstrip('\r\n'),'004')
             idx +=1
         self.assertEqual(idx,4)
         return
@@ -518,19 +528,19 @@ class debug_cmpack_case(unittest.TestCase):
         stime = time.time()
         for l in run_cmd_output(cmds,True,False):
             if idx == 0:
-                self.assertEqual(l,'001')
+                self.assertEqual(l.rstrip('\r\n'),'001')
                 # make sure time is at most 2 second
                 stime = self.__self_time_assert(stime,2.0)
             elif idx == 1:
-                self.assertEqual(l,'002')
+                self.assertEqual(l.rstrip('\r\n'),'002')
                 # make sure time is at most 2 second
                 stime = self.__self_time_assert(stime,2.0)
             elif idx == 2:
-                self.assertEqual(l,'003')
+                self.assertEqual(l.rstrip('\r\n'),'003')
                 # make sure time is at most 2 second
                 stime = self.__self_time_assert(stime,2.0)
             elif idx == 3:
-                self.assertEqual(l,'004')
+                self.assertEqual(l.rstrip('\r\n'),'004')
                 # make sure time is at most 2 second
                 stime = self.__self_time_assert(stime,2.0)
             idx +=1
@@ -548,23 +558,82 @@ class debug_cmpack_case(unittest.TestCase):
         stime = time.time()
         for l in run_cmd_output(cmds,False,True):
             if idx == 0:
-                self.assertEqual(l,'001')
+                self.assertEqual(l.rstrip('\r\n'),'001')
                 # make sure time is at most 2 second
                 stime = self.__self_time_assert(stime,2.0)
             elif idx == 1:
-                self.assertEqual(l,'002')
+                self.assertEqual(l.rstrip('\r\n'),'002')
                 # make sure time is at most 2 second
                 stime = self.__self_time_assert(stime,2.0)
             elif idx == 2:
-                self.assertEqual(l,'003')
+                self.assertEqual(l.rstrip('\r\n'),'003')
                 # make sure time is at most 2 second
                 stime = self.__self_time_assert(stime,2.0)
             elif idx == 3:
-                self.assertEqual(l,'004')
+                self.assertEqual(l.rstrip('\r\n'),'004')
                 # make sure time is at most 2 second
                 stime = self.__self_time_assert(stime,2.0)
             idx +=1
         self.assertEqual(idx,4)
+        return
+
+    def test_A011(self):
+        for i in range(100):
+            cmds=[]
+            cmds.append('%s'%(sys.executable))
+            cmds.append(__file__)
+            cmds.append('cmdout')
+            cmds.append('gg')
+            cmds.append('bb')
+            idx=0
+            tempf = make_tempfile()
+            for l in run_cmd_output(cmds,tempf):
+                idx += 1
+            self.assertEqual(idx,0)
+            os.remove(tempf)
+            fd,f=tempfile.mkstemp()
+            # we make sure this would be no more run fd
+            if 'TEST_VERBOSE' in os.environ.keys():
+                logging.info('fd %s'%(fd))
+            elif (i % 20) == 0:
+                sys.stderr.write('.')
+                sys.stderr.flush()
+            self.assertTrue( fd < 10)
+            os.close(fd)
+            os.remove(f)
+        for i in range(100):
+            cmds=[]
+            cmds.append('%s'%(sys.executable))
+            cmds.append(__file__)
+            cmds.append('cmderr')
+            cmds.append('gg')
+            cmds.append('bb')
+            idx=0
+            tempf = make_tempfile()
+            for l in run_cmd_output(cmds,False,tempf):
+                idx += 1
+            self.assertEqual(idx,0)
+            idx= 0
+            with open(tempf,'rb') as fin:
+                for l in fin:
+                    l = l.rstrip('\r\n')
+                    if idx == 0:
+                        self.assertEqual(l.rstrip('\r\n'),'gg')
+                    elif idx == 1:
+                        self.assertEqual(l.rstrip('\r\n'),'bb')
+                    idx += 1
+            self.assertEqual(idx,2)
+            os.remove(tempf)
+            fd,f=tempfile.mkstemp()
+            # we make sure this would be no more run fd
+            if 'TEST_VERBOSE' in os.environ.keys():
+                logging.info('fd %s'%(fd))
+            elif (i % 20) == 0:
+                sys.stderr.write('.')
+                sys.stderr.flush()
+            self.assertTrue( fd < 10)
+            os.close(fd)
+            os.remove(f)
         return
 
 
@@ -629,7 +698,10 @@ def main():
     if '-v' in sys.argv[1:] or '--verbose' in sys.argv[1:]:
         loglvl = logging.DEBUG
         fmt = "%(levelname)-8s [%(filename)-10s:%(funcName)-20s:%(lineno)-5s] %(message)s"
+        os.environ['TEST_VERBOSE'] = '1'
         logging.basicConfig(level=loglvl,format=fmt)
+    elif 'TEST_VERBOSE' in os.environ.keys():
+        del os.environ['TEST_VERBOSE']
     unittest.main()
 
 if __name__ == '__main__':
