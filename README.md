@@ -2,6 +2,7 @@
 > python package for cmd run
 
 ### Release History
+* Mar 5th 2017 Release 0.2.4 to release the run_cmd_output command with iter mode
 * Mar 4th 2017 Release 0.2.2 to add new function run_cmd_output
 * Feb 14th 2017 Release 0.2.0 to fixup bug when call shell mode not in multiple args
 * Dec 29th 2016 Release 0.1.8 to make expand the call for run_command_callback and give the long output handle ok

@@ -158,6 +158,19 @@ def echoout_handler(args,parser):
 	sys.exit(0)
 	return
 
+def outtime_handler(args,parser):
+	out_time(args.subnargs)
+	sys.exit(0)
+	return
+
+
+
+def errtime_handler(args,parser):
+	err_time(args.subnargs)
+	sys.exit(0)
+	return
+
+
 def main():
 	outputfile_orig = os.path.join(os.path.dirname(os.path.abspath(__file__)),'release.py')
 	outputfile = slash_string(outputfile_orig)
@@ -167,7 +180,7 @@ def main():
 			"failfast|f" : true,
 			"release<release_handler>##release file##" : {
 				"output|O" : "%s",
-				"importnames|I" : ["debug_cmpack_test_case"],
+				"importnames|I" : ["debug_cmpack_case"],
 				"macros|M" : ["##handleoutstart","##handleoutend"]
 			},
 			"test<test_handler>##test mode##" : {
@@ -180,6 +193,12 @@ def main():
 				"$" : "*"
 			},
 			"echoout<echoout_handler>" : {
+				"$" : "*"
+			},
+			"outtime<outtime_handler>" : {
+				"$" : "*"
+			},
+			"errtime<errtime_handler>" : {
 				"$" : "*"
 			}
 		}

@@ -61,14 +61,12 @@ class _CmdRunObject(object):
         return s
 
     def __enqueue_output(self,out, queue,description,endq):
-        logging.info('[%s]out %s'%(description,out))
         for line in iter(out.readline, b''):
             transline = self.__trans_to_string(line)
             transline = transline.rstrip('\r\n')
             queue.put(transline)
         endq.put('done')
         endq.task_done()
-        logging.info('[%s]endq %s'%(description,endq))
         return
     def __prepare_out(self):
         if self.__p.stdout is not None:
@@ -199,6 +197,40 @@ class _CmdRunObject(object):
                     time.sleep(0.1)
         return
 
+    def __iter__(self):
+        if self.__p is not None:
+            while True:
+                if self.errended and self.outended:
+                    break
+                try:
+                    rl = self.recvq.get_nowait()
+                    yield rl
+                except Queue.Empty:
+                    if not self.errended:
+                        try:
+                            rl = self.enderr.get_nowait()
+                            if rl == 'done':
+                                self.errended = True
+                                self.enderr.join()
+                                self.enderr = None
+                        except Queue.Empty:
+                            pass
+                    if not self.outended :
+                        try:
+                            rl = self.endout.get_nowait()
+                            if rl == 'done':
+                                self.outended = True
+                                self.endout.join()
+                                self.endout = None
+                        except Queue.Empty:
+                            pass
+                    if not self.errended or not self.outended:
+                        # sleep for a while to get 
+                        time.sleep(0.1)
+            # all is ok ,so remove the resource
+            self.__clean_resource()
+
+
     def __clean_resource(self):
         self.__wait_out()
         self.__wait_err()
@@ -217,21 +249,6 @@ def run_command_callback(cmd,callback,ctx,stdoutfile=subprocess.PIPE,stderrfile=
     cmdobj.call_readback(callback,ctx)
     return cmdobj.get_exitcode()
 
-class _StoreLines(object):
-    def __init__(self):
-        self.__lines = []
-        return
-
-    def store_line(self,rl):
-        self.__lines.append(rl)
-        return
-
-    def get_outs(self):
-        return self.__lines
-
-def _call_out_Storeline(rl,ctx):
-    ctx.store_line(rl)
-    return
 
 def run_cmd_output(cmd,stdout=True,stderr=False,shellmode=True,copyenv=None):
     if stdout:
@@ -243,9 +260,7 @@ def run_cmd_output(cmd,stdout=True,stderr=False,shellmode=True,copyenv=None):
         stderrfile=subprocess.PIPE
     else:
         stderrfile=open(os.devnull,'wb')
-    store = _StoreLines()
-    run_command_callback(cmd,_call_out_Storeline,store,stdoutfile,stderrfile,shellmode,copyenv)
-    return store.get_outs()
+    return _CmdRunObject(cmd,stdoutfile,stderrfile,shellmode,copyenv)
 
 
 
@@ -302,10 +317,25 @@ def echo_out(args):
     sys.stdout.write('\n')
     return
 
+def out_time(args):
+    for c in args:
+        sys.stdout.write('%s\n'%(c))
+        sys.stdout.flush()
+        time.sleep(1.0)
+    return
+
+def err_time(args):
+    for c in args:
+        sys.stderr.write('%s\n'%(c))
+        sys.stderr.flush()
+        time.sleep(1.0)
+    return
+
+
 ##handleoutend
 
 
-class debug_cmpack_test_case(unittest.TestCase):
+class debug_cmpack_case(unittest.TestCase):
     def setUp(self):
         self.__testlines = []
         return
@@ -470,6 +500,72 @@ class debug_cmpack_test_case(unittest.TestCase):
         self.assertEqual(idx,4)
         return
 
+    def __self_time_assert(self,lasttime,mosttime):
+        ctime = time.time()
+        self.assertTrue( (ctime - lasttime) < mosttime)
+        return ctime
+
+    def test_A010(self):
+        cmds = []
+        cmds.append(sys.executable)
+        cmds.append(__file__)
+        cmds.append('outtime')
+        cmds.append('001')
+        cmds.append('002')
+        cmds.append('003')
+        cmds.append('004')
+        idx = 0
+        stime = time.time()
+        for l in run_cmd_output(cmds,True,False):
+            if idx == 0:
+                self.assertEqual(l,'001')
+                # make sure time is at most 2 second
+                stime = self.__self_time_assert(stime,2.0)
+            elif idx == 1:
+                self.assertEqual(l,'002')
+                # make sure time is at most 2 second
+                stime = self.__self_time_assert(stime,2.0)
+            elif idx == 2:
+                self.assertEqual(l,'003')
+                # make sure time is at most 2 second
+                stime = self.__self_time_assert(stime,2.0)
+            elif idx == 3:
+                self.assertEqual(l,'004')
+                # make sure time is at most 2 second
+                stime = self.__self_time_assert(stime,2.0)
+            idx +=1
+        self.assertEqual(idx,4)
+
+        cmds = []
+        cmds.append(sys.executable)
+        cmds.append(__file__)
+        cmds.append('errtime')
+        cmds.append('001')
+        cmds.append('002')
+        cmds.append('003')
+        cmds.append('004')
+        idx = 0
+        stime = time.time()
+        for l in run_cmd_output(cmds,False,True):
+            if idx == 0:
+                self.assertEqual(l,'001')
+                # make sure time is at most 2 second
+                stime = self.__self_time_assert(stime,2.0)
+            elif idx == 1:
+                self.assertEqual(l,'002')
+                # make sure time is at most 2 second
+                stime = self.__self_time_assert(stime,2.0)
+            elif idx == 2:
+                self.assertEqual(l,'003')
+                # make sure time is at most 2 second
+                stime = self.__self_time_assert(stime,2.0)
+            elif idx == 3:
+                self.assertEqual(l,'004')
+                # make sure time is at most 2 second
+                stime = self.__self_time_assert(stime,2.0)
+            idx +=1
+        self.assertEqual(idx,4)
+        return
 
 
 
@@ -519,6 +615,12 @@ def main():
         return
     elif len(sys.argv) > 1 and sys.argv[1] == 'echoout':
         echo_out(sys.argv[2:])
+        return
+    elif len(sys.argv) > 1 and sys.argv[1] == 'outtime':
+        out_time(sys.argv[2:])
+        return
+    elif len(sys.argv) > 1 and sys.argv[1] == 'errtime':
+        err_time(sys.argv[2:])
         return
 
     if '--release' in sys.argv[1:]:
