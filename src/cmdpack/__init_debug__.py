@@ -45,6 +45,8 @@ def run_read_cmd(cmd,stdoutfile=subprocess.PIPE,stderrfile=subprocess.PIPE,shell
 
 
 
+
+
 class _CmdRunObject(object):
     def __trans_to_string(self,s):
         if sys.version[0] == '3':
@@ -57,20 +59,24 @@ class _CmdRunObject(object):
                     idx += 1
             raise Exception('not valid bytes (%s)'%(repr(s)))
         return s
+
     def __enqueue_output(self,out, queue,description,endq):
+        logging.info('[%s]out %s'%(description,out))
         for line in iter(out.readline, b''):
             transline = self.__trans_to_string(line)
             transline = transline.rstrip('\r\n')
             queue.put(transline)
         endq.put('done')
         endq.task_done()
+        logging.info('[%s]endq %s'%(description,endq))
         return
-
     def __prepare_out(self):
-        if self.__p is not None:
+        if self.__p.stdout is not None:
             if self.recvq is None:
                 self.recvq = Queue.Queue()
+            assert(self.endout is None)
             self.endout = Queue.Queue()
+            assert(self.tout is None)
             self.tout = threading.Thread(target=self.__enqueue_output,args=(self.__p.stdout,self.recvq,'stdout',self.endout))
         return
 
@@ -78,7 +84,9 @@ class _CmdRunObject(object):
         if self.__p.stderr is not None:
             if self.recvq is None:
                 self.recvq = Queue.Queue()
+            assert(self.enderr is None)
             self.enderr = Queue.Queue()
+            assert(self.terr is None)
             self.terr = threading.Thread(target=self.__enqueue_output,args=(self.__p.stderr,self.recvq,'stderr',self.enderr))
         return
 
@@ -86,12 +94,14 @@ class _CmdRunObject(object):
         if self.tout is not None:
             self.tout.start()
             self.outended = False
+            logging.info('outended False')
         return
 
     def __start_err(self):
         if self.terr is not None:
             self.terr.start()
             self.errended = False
+            logging.info('errended False')
         return
 
     def __init__(self,cmd,stdoutfile,stderrfile,shellmode,copyenv):
@@ -102,6 +112,8 @@ class _CmdRunObject(object):
         self.outended = True
         self.errended = True
         self.recvq = None
+        self.enderr = None
+        self.endout = None
         self.__prepare_out()
         self.__prepare_err()
         self.__start_out()
@@ -155,6 +167,7 @@ class _CmdRunObject(object):
             return
         while True:
             if self.errended and self.outended:
+                logging.info('outended errended')
                 break
             try:
                 rl = self.recvq.get_nowait()
@@ -165,6 +178,7 @@ class _CmdRunObject(object):
                     try:
                         rl = self.enderr.get_nowait()
                         if rl == 'done':
+                            logging.info('errended')
                             self.errended = True
                             self.enderr.join()
                             self.enderr = None
@@ -174,6 +188,7 @@ class _CmdRunObject(object):
                     try:
                         rl = self.endout.get_nowait()
                         if rl == 'done':
+                            logging.info('outended')
                             self.outended = True
                             self.endout.join()
                             self.endout = None
