@@ -6,6 +6,8 @@ import subprocess
 import logging
 import time
 import threading
+import re
+import signal
 try:
     import Queue
 except ImportError:
@@ -43,9 +45,114 @@ def run_read_cmd(cmd,stdoutfile=subprocess.PIPE,stderrfile=subprocess.PIPE,shell
     p = subprocess.Popen(cmds,stdout=stdoutfile,stderr=stderrfile,shell=shellmode,env=copyenv)
     return p
 
+def __get_child_pids_win32(pid,recursive=True):
+    pids = []
+    intexpr = re.compile('^([\d]+)\s*$')
+    for l in run_cmd_output(['wmic','process','where(ParentProcessId=%d)'%(pid),'get','ProcessId']):
+        l = l.rstrip('\r\n')
+        if intexpr.match(l):
+            l = l.strip('\t ')
+            l = l.rstrip('\t ')
+            cpid = int(l)
+            if cpid not in pids:
+                pids.append(cpid)
+            if recursive:
+                cpids = __get_child_pids_win32(cpid,recursive)
+                for p in cpids:
+                    if p not in pids:
+                        pids.append(p)
+    return pids
+
+def __get_child_pids_cygwin(pid,recursive=True):
+    pids = []
+    for l in run_cmd_output(['ps','-W']):
+        l = l.rstrip('\r\n')
+        l = l.strip('\t ')
+        l = l.rstrip('\t ')
+        sarr = re.split('\s+',l)
+        if len(sarr) < 2:
+            continue
+        ppid = int(sarr[1])
+        if ppid != pid:
+            continue
+        cpid = int(sarr[0])
+        if cpid not in pids:
+            pids.append(cpid)
+        if recursive:
+            cpids = __get_child_pids_cygwin(cpid,recursive)
+            for p in cpids:
+                if p not in pids:
+                    pids.append(p)
+    return pids
+
+def __get_child_pids_darwin(pid,recursive=True):
+    pids = []
+    for l in run_cmd_output(['ps','-A','-O','ppid']):
+        l = l.rstrip('\r\n\t ')
+        l = l.strip('\t ')
+        sarr = re.split('\s+',l)
+        if len(sarr) < 2:
+            continue
+        ppid = int(sarr[1])
+        if ppid != pid:
+            continue
+        cpid = int(sarr[0])
+        if cpid not in pids:
+            pids.append(cpid)
+        if recursive:
+            cpids = __get_child_pids_darwin(cpid,recursive)
+            for p in cpids:
+                if p not in pids:
+                    pids.append(p)
+    return pids
+
+def __get_child_pids_linux(pid,recursive=True):
+    pids = []
+    for l in run_cmd_output(['ps','-e','-O','ppid']):
+        l = l.rstrip('\r\n \t')
+        l = l.strip('\t ')
+        sarr = re.split('\s+',l)
+        if len(sarr) < 2:
+            continue
+        ppid = int(sarr[1])
+        if ppid != pid:
+            continue
+        cpid = int(sarr[0])
+        if cpid not in pids:
+            pids.append(cpid)
+        if recursive:
+            cpids = __get_child_pids_linux(cpid,recursive)
+            for p in cpids:
+                if p not in pids:
+                    pids.append(p)
+    return pids
 
 
+def get_child_pids(pid,recursive=True):
+    osname = sys.platform.lower()
+    if osname == 'darwin':
+        return __get_child_pids_darwin(pid,recursive)
+    elif osname == 'cygwin':
+        return __get_child_pids_cygwin(pid,recursive)
+    elif osname == 'win32':
+        return __get_child_pids_win32(pid,recursive)
+    elif osname == 'linux2' or osname == 'linux':
+        return __get_child_pids_linux(pid,recursive)
+    else:
+        raise Exception('not supported platform [%s]'%(osname))
 
+class CmdObjectAttr(object):
+    def __init__(self):
+        pass
+
+    def __getattr__(self,k,defval=None):
+        if k not in self.__dict__.keys():
+            return defval
+        return self.__dict__[k]
+
+    def __setattr__(self,k,v):
+        self.__dict__[k] = v
+        return
 
 class _CmdRunObject(object):
     def __trans_to_string(self,s):
@@ -236,7 +343,72 @@ class _CmdRunObject(object):
         self.__wait_recvq()
         return self.__get_exitcode()
 
-    def get_exitcode(self):
+    def __send_kill(self,pid):
+        osname = sys.platform.lower()
+        logging.info('send kill [%s]'%(pid))
+        if osname == 'win32':
+            os.kill(pid,signal.CTRL_C_EVENT)
+            os.kill(pid,signal.CTRL_BREAK_EVENT)
+        elif osname == 'cygwin' or osname == 'linux' or osname == 'linux2' or osname == 'darwin':
+            os.kill(pid,signal.SIGKILL)
+        else:
+            raise Exception('unsupported osname [%s]'%(osname))
+        return
+
+    def __kill_proc_childs(self,pid):
+        cpids = get_child_pids(pid)
+        self.__send_kill(pid)
+        for p in cpids:            
+            self.__send_kill(p)
+        return
+
+    def __kill_proc(self,attr=None):
+        maxwtime = None
+        if attr is not None:
+            maxwtime = attr.maxwtime
+        exitcode = self.__exitcode
+        stime = time.time()
+        if self.__p is not None:
+            while True:
+                if self.errended and self.outended:
+                    break
+                try:
+                    rl = self.recvq.get_nowait()
+                    logging.info('rl (%s)'%(rl.rstrip('\r\n')))
+                except Queue.Empty:
+                    if not self.errended:
+                        try:
+                            rl = self.enderr.get_nowait()
+                            if rl == 'done':
+                                self.errended = True
+                                self.enderr.join()
+                                self.enderr = None
+                        except Queue.Empty:
+                            pass
+                    if not self.outended :
+                        try:
+                            rl = self.endout.get_nowait()
+                            if rl == 'done':
+                                self.outended = True
+                                self.endout.join()
+                                self.endout = None
+                        except Queue.Empty:
+                            pass
+                    if not self.errended or not self.outended:
+                        # sleep for a while to get 
+                        if maxwtime is not None:
+                            ctime = time.time()
+                            if (ctime - stime) > maxwtime:
+                                logging.info('[%s] kill[%s]'%(ctime,self.__p.pid))
+                                self.__kill_proc_childs(self.__p.pid)
+                        time.sleep(0.1)
+        self.__exitcode = exitcode
+        return exitcode
+
+
+
+    def get_exitcode(self,attr=None):
+        self.__kill_proc(attr)
         return self.__clean_resource()
 
     def __del__(self):
@@ -635,6 +807,30 @@ class debug_cmdpack_case(unittest.TestCase):
             os.close(fd)
             os.remove(f)
         return
+
+    def test_A012(self):
+        cmds = []
+        cmds.append('%s'%(sys.executable))
+        cmds.append(__file__)
+        cmds.append('outtime')
+        cmds.extend(['cc','bb','dd','ee','ff'])
+        p = run_cmd_output(cmds)
+        idx = 0
+        stime = time.time()
+        for l in p:
+            if idx == 0:
+                self.assertEqual(l.rstrip('\r\n'),'cc')
+            else:
+                break
+            idx += 1
+        attr = CmdObjectAttr()
+        attr.maxwtime = 1.0
+        exitcode = p.get_exitcode(attr)
+        ctime = time.time()
+        self.assertTrue( (ctime - stime) < 3.0)
+        return
+
+
 
 
 
