@@ -29,11 +29,11 @@ wait_file_until()
 				rm -f "$_waitf"
 				break
 			fi
-			/bin/echo -e "import time\ntime.sleep(0.1)" | $PYTHON
+			/bin/echo  "import time;time.sleep(0.1)" | $PYTHON
 			_checked=`expr $_checked \+ 1`
 		else
 			_checked=0
-			/bin/echo -e "import time\ntime.sleep(0.1)" | $PYTHON	
+			/bin/echo "import time;time.sleep(0.1)" | $PYTHON	
 			_cnt=`expr $_cnt \+ 1`
 			if [ $_cnt -gt $_maxtime ]
 				then

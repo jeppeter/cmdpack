@@ -2,6 +2,7 @@
 > python package for cmd run
 
 ### Release History
+* Mar 8th 2017 Release 0.2.8 to add kill child process
 * Mar 5th 2017 Release 0.2.6 to release the run_cmd_output command with iter mode and make the coding as the input and output
 * Mar 4th 2017 Release 0.2.2 to add new function run_cmd_output
 * Feb 14th 2017 Release 0.2.0 to fixup bug when call shell mode not in multiple args

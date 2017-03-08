@@ -69,12 +69,15 @@ def __get_child_pids_win32(pid,recursive=True):
 
 def __get_child_pids_cygwin(pid,recursive=True):
     pids = []
+    intexpr = re.compile('([\d]+)')
     for l in run_cmd_output(['ps','-W']):
         l = l.rstrip('\r\n')
         l = l.strip('\t ')
         l = l.rstrip('\t ')
         sarr = re.split('\s+',l)
         if len(sarr) < 2:
+            continue
+        if not intexpr.match(sarr[0]) or not intexpr.match(sarr[1]):
             continue
         ppid = int(sarr[1])
         if ppid != pid:
@@ -91,11 +94,14 @@ def __get_child_pids_cygwin(pid,recursive=True):
 
 def __get_child_pids_darwin(pid,recursive=True):
     pids = []
+    intexpr = re.compile('([\d]+)')
     for l in run_cmd_output(['ps','-A','-O','ppid']):
         l = l.rstrip('\r\n\t ')
         l = l.strip('\t ')
         sarr = re.split('\s+',l)
         if len(sarr) < 2:
+            continue
+        if not intexpr.match(sarr[0]) or not intexpr.match(sarr[1]):
             continue
         ppid = int(sarr[1])
         if ppid != pid:
@@ -112,11 +118,14 @@ def __get_child_pids_darwin(pid,recursive=True):
 
 def __get_child_pids_linux(pid,recursive=True):
     pids = []
+    intexpr = re.compile('([\d]+)')
     for l in run_cmd_output(['ps','-e','-O','ppid']):
         l = l.rstrip('\r\n \t')
         l = l.strip('\t ')
         sarr = re.split('\s+',l)
         if len(sarr) < 2:
+            continue
+        if not intexpr.match(sarr[0]) or not intexpr.match(sarr[1]):
             continue
         ppid = int(sarr[1])
         if ppid != pid:
