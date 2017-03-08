@@ -7,7 +7,6 @@ import logging
 import time
 import threading
 import re
-import signal
 try:
     import Queue
 except ImportError:
@@ -47,13 +46,17 @@ def run_read_cmd(cmd,stdoutfile=subprocess.PIPE,stderrfile=subprocess.PIPE,shell
 
 def __get_child_pids_win32(pid,recursive=True):
     pids = []
+    cmd = 'wmic process where(ParentProcessId=%d) get ProcessId'%(pid)
+    logging.info('run (%s)'%(cmd))
     intexpr = re.compile('^([\d]+)\s*$')
-    for l in run_cmd_output(['wmic','process','where(ParentProcessId=%d)'%(pid),'get','ProcessId']):
+    for l in run_cmd_output(cmd):
+        logging.info('[%s]'%(l.rstrip('\r\n')))
         l = l.rstrip('\r\n')
         if intexpr.match(l):
             l = l.strip('\t ')
             l = l.rstrip('\t ')
             cpid = int(l)
+            logging.info('[%s] cpid %d'%(l,cpid))
             if cpid not in pids:
                 pids.append(cpid)
             if recursive:
@@ -62,6 +65,7 @@ def __get_child_pids_win32(pid,recursive=True):
                     if p not in pids:
                         pids.append(p)
     return pids
+
 
 def __get_child_pids_cygwin(pid,recursive=True):
     pids = []
@@ -347,10 +351,18 @@ class _CmdRunObject(object):
         osname = sys.platform.lower()
         logging.info('send kill [%s]'%(pid))
         if osname == 'win32':
-            os.kill(pid,signal.CTRL_C_EVENT)
-            os.kill(pid,signal.CTRL_BREAK_EVENT)
+            cmd = 'taskkill /F /PID %d'%(pid)
+            logging.info('call [%s]'%(cmd))
+            devnullfd=open(os.devnull,'wb')
+            subprocess.call(cmd,stdout=devnullfd,stderr=devnullfd,shell=True) 
+            devnullfd.close()
+            devnullfd = None
         elif osname == 'cygwin' or osname == 'linux' or osname == 'linux2' or osname == 'darwin':
-            os.kill(pid,signal.SIGKILL)
+            cmd='kill -9 %d'%(pid)
+            devnullfd=open(os.devnull,'wb')
+            subprocess.call(cmd,stdout=devnullfd,stderr=devnullfd,shell=True)
+            devnullfd.close()
+            devnullfd = None
         else:
             raise Exception('unsupported osname [%s]'%(osname))
         return
