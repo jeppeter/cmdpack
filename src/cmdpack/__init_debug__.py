@@ -432,9 +432,6 @@ class _CmdRunObject(object):
         self.__kill_proc(attr)
         return self.__clean_resource()
 
-    def __del__(self):
-        self.__clean_resource()
-        return
 
 def run_command_callback(cmd,callback,ctx,stdoutfile=subprocess.PIPE,stderrfile=None,shellmode=True,copyenv=None):
     cmdobj = _CmdRunObject(cmd,stdoutfile,stderrfile,shellmode,copyenv)
