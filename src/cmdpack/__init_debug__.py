@@ -426,7 +426,12 @@ class _CmdRunObject(object):
         self.__exitcode = exitcode
         return exitcode
 
-
+    def __del__(self):
+        attr = CmdObjectAttr()
+        attr.maxwtime = 0.1
+        self.__kill_proc(attr)
+        self.__clean_resource()
+        return
 
     def get_exitcode(self,attr=None):
         self.__kill_proc(attr)
