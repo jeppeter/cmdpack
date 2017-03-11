@@ -15,11 +15,96 @@ except ImportError:
 __version__ = "VERSIONNUMBER"
 __version_info__ = "VERSIONINFO"
 
+class _LoggerObject(object):
+    def __init__(self,logname='cmdpack'):
+        self.__logger = logging.getLogger(logname)
+        if len(self.__logger.handlers) == 0:
+            loglvl = logging.WARN
+            lvlname = '%s_LOGLEVEL'%(logname.upper())
+            if lvlname in os.environ.keys():
+                v = os.environ[lvlname]
+                vint = 0
+                try:
+                    vint = int(v)
+                except:
+                    vint = 0
+                if vint >= 4:
+                    loglvl = logging.DEBUG
+                elif vint >= 3:
+                    loglvl = logging.INFO
+            handler = logging.StreamHandler()
+            fmt = "%(levelname)-8s %(message)s"
+            logfmtname = '%s_LOGFMT'%(logname.upper())
+            if logfmtname in os.environ.keys():
+                v = os.environ[logfmtname]
+                if v is not None and len(v) > 0:
+                    fmt = v
+            formatter = logging.Formatter(fmt)
+            handler.setFormatter(formatter)
+            self.__logger.addHandler(handler)
+            self.__logger.setLevel(loglvl)
+
+    def format_string(self,arr):
+        s = ''
+        if isinstance(arr,list):
+            i = 0
+            for c in arr:
+                s += '[%d]%s\n'%(i,c)
+                i += 1
+        elif isinstance(arr,dict):
+            for c in arr.keys():
+                s += '%s=%s\n'%(c,arr[c])
+        else:
+            s += '%s'%(arr)
+        return s
+
+    def format_call_msg(self,msg,callstack):
+        inmsg = ''  
+        if callstack is not None:
+            try:
+                frame = sys._getframe(callstack)
+                inmsg += '[%-10s:%-20s:%-5s] '%(frame.f_code.co_filename,frame.f_code.co_name,frame.f_lineno)
+            except:
+                inmsg = ''
+        inmsg += msg
+        return inmsg
+
+    def info(self,msg,callstack=1):
+        inmsg = msg
+        if callstack is not None:
+            inmsg = self.format_call_msg(msg,(callstack + 1))
+        return self.__logger.info('%s'%(inmsg))
+
+    def error(self,msg,callstack=1):
+        inmsg = msg
+        if callstack is not None:
+            inmsg = self.format_call_msg(msg,(callstack + 1))
+        return self.__logger.error('%s'%(inmsg))
+
+    def warn(self,msg,callstack=1):
+        inmsg = msg
+        if callstack is not None:
+            inmsg = self.format_call_msg(msg,(callstack + 1))
+        return self.__logger.warn('%s'%(inmsg))
+
+    def debug(self,msg,callstack=1):
+        inmsg = msg
+        if callstack is not None:
+            inmsg = self.format_call_msg(msg,(callstack + 1))
+        return self.__logger.debug('%s'%(inmsg))
+
+    def fatal(self,msg,callstack=1):
+        inmsg = msg
+        if callstack is not None:
+            inmsg = self.format_call_msg(msg,(callstack + 1))
+        return self.__logger.fatal('%s'%(inmsg))
+
 
 
 
 def run_cmd_wait(cmd,mustsucc=1,noout=1):
-    logging.debug('run (%s)'%(cmd))
+    p = _LoggerObject('cmdpack')
+    p.debug('run (%s)'%(cmd))
     if noout > 0:
         ret = subprocess.call(cmd,stdout=subprocess.PIPE,stderr=subprocess.PIPE,shell=True)
     else:
@@ -29,7 +114,8 @@ def run_cmd_wait(cmd,mustsucc=1,noout=1):
     return ret
 
 def run_read_cmd(cmd,stdoutfile=subprocess.PIPE,stderrfile=subprocess.PIPE,shellmode=True,copyenv=None):
-    #logging.info('run %s stdoutfile %s stderrfile %s shellmode %s copyenv %s'%(cmd,stdoutfile,stderrfile,shellmode,copyenv))
+    infoobj = _LoggerObject('cmdpack')
+    infoobj.info('run %s stdoutfile %s stderrfile %s shellmode %s copyenv %s'%(cmd,stdoutfile,stderrfile,shellmode,copyenv))
     if copyenv is None:
         copyenv = os.environ.copy()
     cmds = cmd
@@ -45,18 +131,19 @@ def run_read_cmd(cmd,stdoutfile=subprocess.PIPE,stderrfile=subprocess.PIPE,shell
     return p
 
 def __get_child_pids_win32(pid,recursive=True):
+    infoobj = _LoggerObject('cmdpack')
     pids = []
     cmd = 'wmic process where(ParentProcessId=%d) get ProcessId'%(pid)
-    logging.info('run (%s)'%(cmd))
+    infoobj.info('run (%s)'%(cmd))
     intexpr = re.compile('^([\d]+)\s*$')
     for l in run_cmd_output(cmd):
-        logging.info('[%s]'%(l.rstrip('\r\n')))
+        infoobj.info('[%s]'%(l.rstrip('\r\n')))
         l = l.rstrip('\r\n')
         if intexpr.match(l):
             l = l.strip('\t ')
             l = l.rstrip('\t ')
             cpid = int(l)
-            logging.info('[%s] cpid %d'%(l,cpid))
+            infoobj.info('[%s] cpid %d'%(l,cpid))
             if cpid not in pids:
                 pids.append(cpid)
             if recursive:
@@ -167,7 +254,7 @@ class CmdObjectAttr(object):
         self.__dict__[k] = v
         return
 
-class _CmdRunObject(object):
+class _CmdRunObject(_LoggerObject):
     def __trans_to_string(self,s):
         if sys.version[0] == '3':
             encodetype = ['UTF-8','latin-1']
@@ -211,17 +298,18 @@ class _CmdRunObject(object):
         if self.tout is not None:
             self.tout.start()
             self.outended = False
-            logging.info('outended False')
+            self.info('outended False')
         return
 
     def __start_err(self):
         if self.terr is not None:
             self.terr.start()
             self.errended = False
-            logging.info('errended False')
+            self.info('errended False')
         return
 
     def __init__(self,cmd,stdoutfile,stderrfile,shellmode,copyenv):
+        super(_CmdRunObject,self).__init__('cmdpack')
         self.__p = run_read_cmd(cmd,stdoutfile,stderrfile,shellmode,copyenv)
         self.terr = None
         self.tout = None
@@ -264,10 +352,10 @@ class _CmdRunObject(object):
                 pret = self.__p.poll()
                 if pret is not None:
                     exitcode = pret
-                    logging.info('exitcode %d'%(exitcode))
+                    self.info('exitcode %d'%(exitcode))
                     break
                 # wait for a time
-                logging.info('will wait')
+                self.info('will wait')
                 time.sleep(0.1)
             if self.__p.stdout is not None:
                 self.__p.stdout.close()
@@ -284,7 +372,7 @@ class _CmdRunObject(object):
             return
         while True:
             if self.errended and self.outended:
-                logging.info('outended errended')
+                self.info('outended errended')
                 break
             try:
                 rl = self.recvq.get_nowait()
@@ -295,7 +383,7 @@ class _CmdRunObject(object):
                     try:
                         rl = self.enderr.get_nowait()
                         if rl == 'done':
-                            logging.info('errended')
+                            self.info('errended')
                             self.errended = True
                             self.enderr.join()
                             self.enderr = None
@@ -305,7 +393,7 @@ class _CmdRunObject(object):
                     try:
                         rl = self.endout.get_nowait()
                         if rl == 'done':
-                            logging.info('outended')
+                            self.info('outended')
                             self.outended = True
                             self.endout.join()
                             self.endout = None
@@ -358,10 +446,10 @@ class _CmdRunObject(object):
 
     def __send_kill(self,pid):
         osname = sys.platform.lower()
-        logging.info('send kill [%s]'%(pid))
+        self.info('send kill [%s]'%(pid))
         if osname == 'win32':
             cmd = 'taskkill /F /PID %d'%(pid)
-            logging.info('call [%s]'%(cmd))
+            self.info('call [%s]'%(cmd))
             devnullfd=open(os.devnull,'wb')
             subprocess.call(cmd,stdout=devnullfd,stderr=devnullfd,shell=True) 
             devnullfd.close()
@@ -395,7 +483,7 @@ class _CmdRunObject(object):
                     break
                 try:
                     rl = self.recvq.get_nowait()
-                    logging.info('rl (%s)'%(rl.rstrip('\r\n')))
+                    self.info('rl (%s)'%(rl.rstrip('\r\n')))
                 except Queue.Empty:
                     if not self.errended:
                         try:
@@ -420,7 +508,7 @@ class _CmdRunObject(object):
                         if maxwtime is not None:
                             ctime = time.time()
                             if (ctime - stime) > maxwtime:
-                                logging.info('[%s] kill[%s]'%(ctime,self.__p.pid))
+                                self.info('[%s] kill[%s]'%(ctime,self.__p.pid))
                                 self.__kill_proc_childs(self.__p.pid)
                         time.sleep(0.1)
         self.__exitcode = exitcode
@@ -543,6 +631,8 @@ def err_time(args):
 class debug_cmdpack_case(unittest.TestCase):
     def setUp(self):
         self.__testlines = []
+        if getattr(self,'logobj',None) is None:
+            self.logobj = logging.getLogger('cmdpack')
         return
 
     def tearDown(self):
@@ -563,7 +653,7 @@ class debug_cmdpack_case(unittest.TestCase):
     def test_A001(self):
         cmd = '"%s" "%s" "cmdout" "001" '%(sys.executable,__file__)
         run_command_callback(cmd,a001_callback,self)
-        logging.info('__testlines %s'%(self.__testlines))
+        self.logobj.info('__testlines %s'%(self.__testlines))
         self.assertEqual(len(self.__testlines),1)
         self.assertEqual(self.__testlines[0].rstrip('\r\n'),'001')
         return
@@ -577,7 +667,7 @@ class debug_cmdpack_case(unittest.TestCase):
         tmpfile = None
         try:
             fd,tmpfile = tempfile.mkstemp(suffix='.py',prefix='cmd',dir=None,text=True)  
-            logging.info('tmpfile %s'%(tmpfile))      
+            self.logobj.info('tmpfile %s'%(tmpfile))      
             os.close(fd)
             with open(tmpfile,'w+') as f:
                 f.write('wrong cmd')
@@ -619,7 +709,7 @@ class debug_cmdpack_case(unittest.TestCase):
             self.assertEqual(len(self.__testlines),0)
             self.__testlines = []
             run_command_callback(cmds,a001_callback,self,stdoutfile=devnullfd,stderrfile=subprocess.PIPE,shellmode=True,copyenv=None)
-            logging.info('__testlines %s'%(self.__testlines))
+            self.logobj.info('__testlines %s'%(self.__testlines))
             self.assertEqual(len(self.__testlines),4)
             self.assertEqual(self.__testlines[0].rstrip('\r\n'), '001')
             self.assertEqual(self.__testlines[1].rstrip('\r\n'), '002')
@@ -788,8 +878,8 @@ class debug_cmdpack_case(unittest.TestCase):
             os.remove(tempf)
             fd,f=tempfile.mkstemp()
             # we make sure this would be no more run fd
-            if 'TEST_VERBOSE' in os.environ.keys():
-                logging.info('fd %s'%(fd))
+            if 'CMDPACK_LOGLEVEL' in os.environ.keys():
+                self.logobj.info('fd %s'%(fd))
             elif (i % 20) == 0:
                 sys.stderr.write('.')
                 sys.stderr.flush()
@@ -821,8 +911,8 @@ class debug_cmdpack_case(unittest.TestCase):
             os.remove(tempf)
             fd,f=tempfile.mkstemp()
             # we make sure this would be no more run fd
-            if 'TEST_VERBOSE' in os.environ.keys():
-                logging.info('fd %s'%(fd))
+            if 'CMDPACK_LOGLEVEL' in os.environ.keys():
+                self.logobj.info('fd %s'%(fd))
             elif (i % 20) == 0:
                 sys.stderr.write('.')
                 sys.stderr.flush()
@@ -847,9 +937,10 @@ class debug_cmdpack_case(unittest.TestCase):
                 break
             idx += 1
         attr = CmdObjectAttr()
-        attr.maxwtime = 1.0
+        attr.maxwtime = 0.1
         exitcode = p.get_exitcode(attr)
         ctime = time.time()
+        self.logobj.info('time elapse %s ctime %s stime %s'%((ctime - stime),ctime,stime))
         self.assertTrue( (ctime - stime) < 3.0)
         return
 
@@ -915,12 +1006,9 @@ def main():
         debug_release()
         return
     if '-v' in sys.argv[1:] or '--verbose' in sys.argv[1:]:
-        loglvl = logging.DEBUG
-        fmt = "%(levelname)-8s [%(filename)-10s:%(funcName)-20s:%(lineno)-5s] %(message)s"
-        os.environ['TEST_VERBOSE'] = '1'
-        logging.basicConfig(level=loglvl,format=fmt)
-    elif 'TEST_VERBOSE' in os.environ.keys():
-        del os.environ['TEST_VERBOSE']
+        os.environ['CMDPACK_LOGLEVEL'] = '4'
+    elif 'CMDPACK_LOGLEVEL' in os.environ.keys():
+        del os.environ['CMDPACK_LOGLEVEL']
     unittest.main()
 
 if __name__ == '__main__':
