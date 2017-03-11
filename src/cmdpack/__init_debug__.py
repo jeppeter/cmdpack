@@ -254,6 +254,8 @@ class CmdObjectAttr(object):
         self.__dict__[k] = v
         return
 
+
+
 class _CmdRunObject(_LoggerObject):
     def __trans_to_string(self,s):
         if sys.version[0] == '3':
@@ -308,9 +310,16 @@ class _CmdRunObject(_LoggerObject):
             self.info('errended False')
         return
 
-    def __init__(self,cmd,stdoutfile,stderrfile,shellmode,copyenv):
+    def __auto_close(self,f):
+        if f is not None and hasattr(f,'close'):
+            f.close()
+            f = None
+        return
+
+    def __init__(self,cmd,stdoutfile,stderrfile,shellmode,copyenv,autoclosefds=[]):
         super(_CmdRunObject,self).__init__('cmdpack')
         self.__p = run_read_cmd(cmd,stdoutfile,stderrfile,shellmode,copyenv)
+        self.__closefiles=autoclosefds
         self.terr = None
         self.tout = None
         self.endout = None
@@ -364,6 +373,9 @@ class _CmdRunObject(_LoggerObject):
                 self.__p.stderr.close()
                 self.__p.stderr = None
             self.__p = None
+        for f in self.__closefiles:
+            self.__auto_close(f)
+        self.__closefiles = []
         self.__exitcode = exitcode
         return exitcode
 
@@ -527,20 +539,23 @@ class _CmdRunObject(_LoggerObject):
 
 
 def run_command_callback(cmd,callback,ctx,stdoutfile=subprocess.PIPE,stderrfile=None,shellmode=True,copyenv=None):
-    cmdobj = _CmdRunObject(cmd,stdoutfile,stderrfile,shellmode,copyenv)
+    cmdobj = _CmdRunObject(cmd,stdoutfile,stderrfile,shellmode,copyenv,[])
     cmdobj.call_readback(callback,ctx)
     return cmdobj.get_exitcode()
 
 
 def run_cmd_output(cmd,stdout=True,stderr=False,shellmode=True,copyenv=None):
     stdouttype = type(stdout)
+    autoclosefds = []
     if isinstance(stdout,bool):
         if stdout:
             stdoutfile=subprocess.PIPE
         else:
             stdoutfile=open(os.devnull,'wb')
+            autoclosefds.append(stdoutfile)
     elif isinstance(stdout,str) or (sys.version[0] == '2' and isinstance(stdout,unicode)) :
         stdoutfile=open(stdout,'wb')
+        autoclosefds.append(stdoutfile)
     else:
         stdoutfile=stdout
 
@@ -549,11 +564,13 @@ def run_cmd_output(cmd,stdout=True,stderr=False,shellmode=True,copyenv=None):
             stderrfile=subprocess.PIPE
         else:
             stderrfile=open(os.devnull,'wb')
+            autoclosefds.append(stderrfile)
     elif isinstance(stderr,str) or (sys.version[0] == '2' and isinstance(stderr,unicode)):
         stderrfile=open(stderr,'wb')
+        autoclosefds.append(stderrfile)
     else:
         stderrfile=stderr
-    return _CmdRunObject(cmd,stdoutfile,stderrfile,shellmode,copyenv)
+    return _CmdRunObject(cmd,stdoutfile,stderrfile,shellmode,copyenv,autoclosefds)
 
 
 
@@ -901,11 +918,16 @@ class debug_cmdpack_case(unittest.TestCase):
             idx= 0
             with open(tempf,'rb') as fin:
                 for l in fin:
-                    l = l.rstrip('\r\n')
+                    if sys.version[0] == '2':
+                        l = l.rstrip('\r\n')
+                    elif sys.version[0] == '3':
+                        bl = l.decode(encoding='UTF-8')
+                        bl = bl.rstrip('\r\n')
+                        l = bl
                     if idx == 0:
-                        self.assertEqual(l.rstrip('\r\n'),'gg')
+                        self.assertEqual(l,'gg')
                     elif idx == 1:
-                        self.assertEqual(l.rstrip('\r\n'),'bb')
+                        self.assertEqual(l,'bb')
                     idx += 1
             self.assertEqual(idx,2)
             os.remove(tempf)
