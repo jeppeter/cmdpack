@@ -641,6 +641,19 @@ def err_time(args):
         time.sleep(1.0)
     return
 
+def error_put(args,fout=sys.stdout):
+    for c in args:
+        fout.write('%s\n'%(c))
+    raise Exception('out <%s>'%(repr(fout)))
+    return
+
+def error_out(args):
+    error_put(args,sys.stdout)
+    return
+
+def error_err(args):
+    error_put(args,sys.stderr)
+    return
 
 ##handleoutend
 
@@ -966,6 +979,38 @@ class debug_cmdpack_case(unittest.TestCase):
         self.assertTrue( (ctime - stime) < 3.0)
         return
 
+    def test_A013(self):
+        cmds = []
+        cmds.append('%s'%(sys.executable))
+        cmds.append(__file__)
+        cmds.append('errorout')
+        bks = ['cc','bb','dd','ee','ff']
+        cmds.extend(bks)
+        p = run_cmd_output(cmds)
+        idx = 0
+        stime = time.time()
+        for l in p:
+            self.assertEqual(l.rstrip('\r\n'),bks[idx])
+            idx += 1
+        exitcode = p.get_exitcode()
+        self.assertTrue(exitcode != 0)
+
+        cmds = []
+        cmds.append('%s'%(sys.executable))
+        cmds.append(__file__)
+        cmds.append('errorerr')
+        bks = ['cc','bb','dd','ee','ff']
+        cmds.extend(bks)
+        p = run_cmd_output(cmds,False,True)
+        idx = 0
+        stime = time.time()
+        for l in p:
+            if idx < len(bks):
+                self.assertEqual(l.rstrip('\r\n'),bks[idx])
+            idx += 1
+        exitcode = p.get_exitcode()
+        self.assertTrue(exitcode != 0)
+        return
 
 
 
@@ -1022,6 +1067,12 @@ def main():
         return
     elif len(sys.argv) > 1 and sys.argv[1] == 'errtime':
         err_time(sys.argv[2:])
+        return
+    elif len(sys.argv) > 1 and sys.argv[1] == 'errorout':
+        error_out(sys.argv[2:])
+        return
+    elif len(sys.argv) > 1 and sys.argv[1] == 'errorerr':
+        error_err(sys.argv[2:])
         return
 
     if '--release' in sys.argv[1:]:

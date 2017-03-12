@@ -170,7 +170,14 @@ def errtime_handler(args,parser):
 	sys.exit(0)
 	return
 
+def errorout_handler(args,parser):
+	error_put(args.subnargs,sys.stdout)
+	return
 
+def errorerr_handler(args,parser):
+	error_put(args.subnargs,sys.stderr)
+	return
+	
 def main():
 	outputfile_orig = os.path.join(os.path.dirname(os.path.abspath(__file__)),'release.py')
 	outputfile = slash_string(outputfile_orig)
@@ -199,6 +206,12 @@ def main():
 				"$" : "*"
 			},
 			"errtime<errtime_handler>" : {
+				"$" : "*"
+			},
+			"errorout<errorout_handler>" : {
+				"$" : "*"
+			},
+			"errorerr<errorerr_handler>" : {
 				"$" : "*"
 			}
 		}
