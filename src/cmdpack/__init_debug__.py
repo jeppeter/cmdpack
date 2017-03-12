@@ -102,13 +102,23 @@ class _LoggerObject(object):
 
 
 
-def run_cmd_wait(cmd,mustsucc=1,noout=1):
+def run_cmd_wait(cmd,mustsucc=1,noout=1,shellmode=True):
     p = _LoggerObject('cmdpack')
     p.debug('run (%s)'%(cmd))
+    cmdin = cmd
+    if isinstance(cmdin,list) and shellmode:
+        cmdin = ''
+        for c in cmd:
+            if len(cmdin) > 0:
+                cmdin += ' '
+            cmdin += '"%s"'%(c)
     if noout > 0:
-        ret = subprocess.call(cmd,stdout=subprocess.PIPE,stderr=subprocess.PIPE,shell=True)
+        devnullfd = open(os.devnull,'wb')
+        ret = subprocess.call(cmdin,stdout=devnullfd,stderr=devnullfd,shell=shellmode)
+        devnullfd.close()
+        devnullfd = None
     else:
-        ret = subprocess.call(cmd,shell=True)
+        ret = subprocess.call(cmdin,shell=shellmode)
     if mustsucc and ret != 0:
         raise Exception('run cmd (%s) error'%(cmd))
     return ret

@@ -2,6 +2,7 @@
 > python package for cmd run
 
 ### Release History
+* Mar 12th 2017 Release 0.4.2 fixup hang over when call cmdlist
 * Mar 11th 2017 Release 0.3.4 to make log when set CMDPACK_LOGLEVEL and CMDPACK_LOGFMT
 * Mar 9th 2017 Release 0.3.0 to fixup bug in \_\_del\_\_ function in _CmdRunObject
 * Mar 8th 2017 Release 0.2.8 to add kill child process
