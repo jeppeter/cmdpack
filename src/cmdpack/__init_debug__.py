@@ -129,7 +129,7 @@ def run_read_cmd(cmd,stdoutfile=subprocess.PIPE,stderrfile=subprocess.PIPE,shell
     if copyenv is None:
         copyenv = os.environ.copy()
     cmds = cmd
-    if isinstance(cmd,list):
+    if isinstance(cmd,list) and shellmode:
         cmds = ''
         i = 0
         for c in cmd:
@@ -342,7 +342,7 @@ class _CmdRunObject(_LoggerObject):
         self.__prepare_err()
         self.__start_out()
         self.__start_err()
-        self.__exitcode = 0
+        self.__retcode = 0
         return
 
     def __wait_err(self):
@@ -364,7 +364,7 @@ class _CmdRunObject(_LoggerObject):
         return
 
     def __get_exitcode(self):
-        exitcode = self.__exitcode
+        exitcode = self.__retcode
         if self.__p is not None:
             while True:
                 # wait 
@@ -386,7 +386,8 @@ class _CmdRunObject(_LoggerObject):
         for f in self.__closefiles:
             self.__auto_close(f)
         self.__closefiles = []
-        self.__exitcode = exitcode
+        self.info('exitcode (%s)'%(exitcode))
+        self.__retcode = exitcode
         return exitcode
 
     def call_readback(self,callback,ctx):
@@ -497,7 +498,7 @@ class _CmdRunObject(_LoggerObject):
         maxwtime = None
         if attr is not None:
             maxwtime = attr.maxwtime
-        exitcode = self.__exitcode
+        exitcode = self.__retcode
         stime = time.time()
         if self.__p is not None:
             while True:
@@ -533,14 +534,11 @@ class _CmdRunObject(_LoggerObject):
                                 self.info('[%s] kill[%s]'%(ctime,self.__p.pid))
                                 self.__kill_proc_childs(self.__p.pid)
                         time.sleep(0.1)
-        self.__exitcode = exitcode
+        self.__retcode = exitcode
         return exitcode
 
     def __del__(self):
-        attr = CmdObjectAttr()
-        attr.maxwtime = 0.1
-        self.__kill_proc(attr)
-        self.__clean_resource()
+        # we do not clean_resource because on here we do not any more
         return
 
     def get_exitcode(self,attr=None):
@@ -766,7 +764,8 @@ class debug_cmdpack_case(unittest.TestCase):
         cmd.append('%s'%(sys.executable))
         cmd.append('%s'%(__file__))
         cmd.append('cmderr')
-        for x in range(1000):
+        outnum = 100
+        for x in range(outnum):
             cmd.append('%d'%(x))
         devnullfd = None
         try:
@@ -775,8 +774,9 @@ class debug_cmdpack_case(unittest.TestCase):
             self.assertEqual(len(self.__testlines),0)
             self.__testlines = []
             run_command_callback(cmd,a001_callback,self,stdoutfile=devnullfd,stderrfile=subprocess.PIPE,shellmode=True,copyenv=None)
-            self.assertEqual(len(self.__testlines),1000)
-            for i in range(1000):
+            logging.info('__testlines (%s)'%(self.__testlines))
+            self.assertEqual(len(self.__testlines),outnum)
+            for i in range(outnum):
                 self.assertEqual(self.__testlines[i].rstrip('\r\n'),'%d'%(i))
         finally:
             if devnullfd is not None:

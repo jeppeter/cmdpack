@@ -64,7 +64,7 @@ exit /b 0
 
 :end
 
-python %script_dir%test\release\release.py test 
+python %script_dir%test\release\release.py test
 set res=%errorlevel%
 if -%res%- == -0- (
 	echo "release ok"
