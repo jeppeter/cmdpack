@@ -2,6 +2,7 @@
 > python package for cmd run
 
 ### Release History
+* Mar 28th 2017 Release 0.4.4 fixup bug when call \_\_retcode not in the \_\_del\_\_ function and cmds when in shellmode=False list not form to string
 * Mar 12th 2017 Release 0.4.2 fixup hang over when call cmdlist
 * Mar 11th 2017 Release 0.3.4 to make log when set CMDPACK_LOGLEVEL and CMDPACK_LOGFMT
 * Mar 9th 2017 Release 0.3.0 to fixup bug in \_\_del\_\_ function in _CmdRunObject
