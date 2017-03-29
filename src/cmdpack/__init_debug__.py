@@ -101,17 +101,49 @@ class _LoggerObject(object):
 
 
 
+def shell_quote_string(s):
+    rets = ''
+    plat = sys.platform.lower()
+    infoobj = _LoggerObject('cmdpack')
+    idx = 0
+    while idx < len(s):
+        c = s[idx]
+        if c == '"':
+            adds = '\\"'
+            infoobj.info('add (%s)'%(adds))
+        elif c == '`':
+            if plat == 'win32':
+                adds = '`'
+            else:
+                adds = '\\`'
+        elif c == '\\':
+            if plat == 'win32':
+                if (idx + 1) == len(s):
+                    adds = '\\\\'
+                else:
+                    adds = '\\'
+            else:
+                adds = '\\\\'
+        else:
+            adds = c
+        rets += adds
+        idx += 1
+    return rets
+
+def format_list_to_shell_cmd(cmd):
+    rets = ''
+    for c in cmd:
+        if len(rets) > 0:
+            rets += ' '
+        rets += '"%s"'%(shell_quote_string(c))
+    return rets
 
 def run_cmd_wait(cmd,mustsucc=1,noout=1,shellmode=True):
     p = _LoggerObject('cmdpack')
     p.debug('run (%s)'%(cmd))
     cmdin = cmd
     if isinstance(cmdin,list) and shellmode:
-        cmdin = ''
-        for c in cmd:
-            if len(cmdin) > 0:
-                cmdin += ' '
-            cmdin += '"%s"'%(c)
+        cmdin = format_list_to_shell_cmd(cmd)
     if noout > 0:
         devnullfd = open(os.devnull,'wb')
         ret = subprocess.call(cmdin,stdout=devnullfd,stderr=devnullfd,shell=shellmode)
@@ -130,13 +162,8 @@ def run_read_cmd(cmd,stdoutfile=subprocess.PIPE,stderrfile=subprocess.PIPE,shell
         copyenv = os.environ.copy()
     cmds = cmd
     if isinstance(cmd,list) and shellmode:
-        cmds = ''
-        i = 0
-        for c in cmd:
-            if i > 0 :
-                cmds += ' '
-            cmds += '"%s"'%(c)
-            i += 1
+        cmds = format_list_to_shell_cmd(cmd)
+    infoobj.info('call (%s)'%(cmds))
     p = subprocess.Popen(cmds,stdout=stdoutfile,stderr=stderrfile,shell=shellmode,env=copyenv)
     return p
 
@@ -1020,6 +1047,26 @@ class debug_cmdpack_case(unittest.TestCase):
             idx += 1
         exitcode = p.get_exitcode()
         self.assertTrue(exitcode != 0)
+        return
+
+    def test_A014(self):
+        cmds = []
+        cmds.append('%s'%(sys.executable))
+        cmds.append(__file__)
+        cmds.append('cmdout')
+        outcon = []
+        outcon.append('"hello"')
+        outcon.append('\\good\\')
+        outcon.append('`new new`')
+        outcon.append('ENV=["hello","world"]')
+        cmds.extend(outcon)
+        p = run_cmd_output(cmds)
+        idx = 0
+        for l in p:
+            self.assertEqual(l.rstrip('\r\n'),outcon[idx])
+            idx += 1
+        exitcode = p.get_exitcode()
+        self.assertEqual(exitcode,0)
         return
 
 

@@ -7,13 +7,18 @@ set packagename=cmdpack
 del /Q /F %script_dir%%packagename%\__init__.py.touched 2>NUL
 del /Q /F %script_dir%test\release\release.py.touched 2>NUL
 
-python %script_dir%make_setup.py
+if -%PYTHON%- == -- (
+	set PYTHON=python
+)
 
-python %script_dir%src\%packagename%\__init_debug__.py --release  %script_dir%%packagename%\__init__.py
+
+%PYTHON% %script_dir%make_setup.py
+
+%PYTHON% %script_dir%src\%packagename%\__init_debug__.py --release  %script_dir%%packagename%\__init__.py
 call :check_file %script_dir%%packagename%\__init__.py.touched
 
 
-python %script_dir%test\release\releasetest.py release --release-output %script_dir%test\release\release.py
+%PYTHON% %script_dir%test\release\releasetest.py release --release-output %script_dir%test\release\release.py
 call :check_file %script_dir%test\release\release.py.touched
 
 goto :end
@@ -35,7 +40,7 @@ if %_maxtime% LSS %_cnt% (
 )
 
 if exist %_waitf% (
-	python -c "import time;time.sleep(0.1)"
+	%PYTHON% -c "import time;time.sleep(0.1)"
 	set /A _checked=%_checked%+1
 	if %_checked% GTR 3 (
 		del /F /Q %_waitf%
@@ -47,7 +52,7 @@ if exist %_waitf% (
 )
 
 set /A _cnt=%_cnt%+1
-python -c "import time;time.sleep(0.1)"
+%PYTHON% -c "import time;time.sleep(0.1)"
 goto :check_file_again
 
 :check_file_end
@@ -64,7 +69,7 @@ exit /b 0
 
 :end
 
-python %script_dir%test\release\release.py test
+%PYTHON% %script_dir%test\release\release.py test
 set res=%errorlevel%
 if -%res%- == -0- (
 	echo "release ok"
