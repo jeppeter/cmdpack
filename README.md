@@ -2,6 +2,7 @@
 > python package for cmd run
 
 ### Release History
+* May 13th 2021 Release 0.4.8 to add get_lines method for CmdObjectAttr to get lines in timeout
 * Mar 29th 2017 Release 0.4.6 fixup bug when call shell quote string
 * Mar 28th 2017 Release 0.4.4 fixup bug when call \_\_retcode not in the \_\_del\_\_ function and cmds when in shellmode=False list not form to string
 * Mar 12th 2017 Release 0.4.2 fixup hang over when call cmdlist
@@ -96,6 +97,62 @@ if __name__ == '__main__':
 > shell output
 ```shell
 hello
+world
+```
+
+
+> get lines in some times to return this will get lines in timeout 0.5 and min lines 1
+
+## run out
+```python
+import cmdpack
+import time
+
+def test_outline():
+    cmds = []
+    cmds.append('%s'%(sys.executable))
+    cmds.append(__file__)
+    cmds.append('cmdout')
+    cmds.append('hello')
+    cmds.append('world')
+    p = cmdpack.run_cmd_output(cmds)
+    while True:
+        if p.errended and p.outended:
+            break
+        rlines = p.get_lines(0.5,2)
+        if len(rlines) > 0:
+            for l in rlines:
+                sys.stdout.write('%s'%(l))
+        else:
+            sys.stdout.write('get [0] lines\n')
+
+    return
+
+def cmdoutput(args):
+    for c in args:
+        time.sleep(1.0)
+        sys.stdout.write('%s\n'%(c))
+        sys.stdout.flush()
+    sys.exit(0)
+    return
+
+def main():
+    if len(sys.argv) >= 2 and sys.argv[1] == 'cmdout':
+        cmdoutput(sys.argv[2:])
+        return
+    test_outline()
+    return
+
+if __name__ == '__main__':
+    main()
+```
+
+> shell output
+```shell
+get [0] lines
+get [0] lines
+hello
+get [0] lines
 world
 ```
 

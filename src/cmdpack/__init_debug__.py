@@ -487,6 +487,45 @@ class _CmdRunObject(_LoggerObject):
             # all is ok ,so remove the resource
             self.__clean_resource()
 
+    def get_lines(self,timeout=1.0,minlines=1):
+        retlines = []
+        stime = time.time()
+        etime = stime + timeout
+        if self.__p is not None:
+            while len(retlines) < minlines:
+                ctime = time.time()
+                if ctime > etime:
+                    break
+                if self.errended and self.outended:
+                    break
+                try:
+                    rl = self.recvq.get_nowait()
+                    retlines.append(rl)
+                except Queue.Empty:
+                    if not self.errended:
+                        try:
+                            rl = self.enderr.get_nowait()
+                            if rl == 'done':
+                                self.errended = True
+                                self.enderr.join()
+                                self.enderr = None
+                        except Queue.Empty:
+                            pass
+                    if not self.outended :
+                        try:
+                            rl = self.endout.get_nowait()
+                            if rl == 'done':
+                                self.outended = True
+                                self.endout.join()
+                                self.endout = None
+                        except Queue.Empty:
+                            pass
+                    if not self.errended or not self.outended:
+                        # sleep for a while to get 
+                        time.sleep(0.1)
+        return retlines
+
+
 
     def __clean_resource(self):
         self.__wait_out()
@@ -1069,6 +1108,75 @@ class debug_cmdpack_case(unittest.TestCase):
         self.assertEqual(exitcode,0)
         return
 
+    def test_A015(self):
+        cmds = []
+        cmds.append('%s'%(sys.executable))
+        cmds.append(__file__)
+        cmds.append('outtime')
+        outcon = []
+        outcon.append('"hello"')
+        outcon.append('\\good\\')
+        outcon.append('`new new`')
+        outcon.append('ENV=["hello","world"]')
+        cmds.extend(outcon)
+        p = run_cmd_output(cmds)
+        retlines = ['"hello"']
+        rlines = p.get_lines(0.5,1)
+        self.assertEqual(len(rlines),1)
+        self.assertEqual(rlines[0].rstrip('\r\n'),outcon[0])
+        attr = CmdObjectAttr()
+        attr.maxwtime = 0.1
+        exitcode = p.get_exitcode(attr)
+        ctime = time.time()
+        self.assertFalse(exitcode == 0)
+        return
+
+
+    def test_A016(self):
+        cmds = []
+        cmds.append('%s'%(sys.executable))
+        cmds.append(__file__)
+        cmds.append('errtime')
+        outcon = []
+        outcon.append('"hello"')
+        outcon.append('\\good\\')
+        outcon.append('`new new`')
+        outcon.append('ENV=["hello","world"]')
+        cmds.extend(outcon)
+        p = run_cmd_output(cmds)
+        retlines = ['"hello"']
+        rlines = p.get_lines(0.5,1)
+        self.assertEqual(len(rlines),0)
+        attr = CmdObjectAttr()
+        attr.maxwtime = 0.1
+        exitcode = p.get_exitcode(attr)
+        ctime = time.time()
+        self.assertFalse(exitcode == 0)
+        return
+
+
+    def test_A017(self):
+        cmds = []
+        cmds.append('%s'%(sys.executable))
+        cmds.append(__file__)
+        cmds.append('errtime')
+        outcon = []
+        outcon.append('"hello"')
+        outcon.append('\\good\\')
+        outcon.append('`new new`')
+        outcon.append('ENV=["hello","world"]')
+        cmds.extend(outcon)
+        p = run_cmd_output(cmds,False,True)
+        retlines = ['"hello"']
+        rlines = p.get_lines(0.5,1)
+        self.assertEqual(len(rlines),1)
+        self.assertEqual(rlines[0].rstrip('\r\n'),outcon[0])
+        attr = CmdObjectAttr()
+        attr.maxwtime = 0.1
+        exitcode = p.get_exitcode(attr)
+        ctime = time.time()
+        self.assertFalse(exitcode == 0)
+        return
 
 
 
