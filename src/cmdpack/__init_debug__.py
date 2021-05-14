@@ -155,7 +155,7 @@ def run_cmd_wait(cmd,mustsucc=1,noout=1,shellmode=True):
         raise Exception('run cmd (%s) error'%(cmd))
     return ret
 
-def run_read_cmd(cmd,stdoutfile=subprocess.PIPE,stderrfile=subprocess.PIPE,shellmode=True,copyenv=None):
+def run_read_cmd(cmd,stdoutfile=subprocess.PIPE,stderrfile=subprocess.PIPE,shellmode=True,copyenv=None,linebuf=True):
     infoobj = _LoggerObject('cmdpack')
     infoobj.info('run %s stdoutfile %s stderrfile %s shellmode %s copyenv %s'%(cmd,stdoutfile,stderrfile,shellmode,copyenv))
     if copyenv is None:
@@ -164,7 +164,12 @@ def run_read_cmd(cmd,stdoutfile=subprocess.PIPE,stderrfile=subprocess.PIPE,shell
     if isinstance(cmd,list) and shellmode:
         cmds = format_list_to_shell_cmd(cmd)
     infoobj.info('call (%s)'%(cmds))
-    p = subprocess.Popen(cmds,stdout=stdoutfile,stderr=stderrfile,shell=shellmode,env=copyenv)
+    if linebuf:
+        bufmode = 1
+    else:
+        bufmode = 0
+    infoobj.info('bufmode %s'%(bufmode))
+    p = subprocess.Popen(cmds,bufsize=bufmode,stdout=stdoutfile,stderr=stderrfile,shell=shellmode,env=copyenv)
     return p
 
 def __get_child_pids_win32(pid,recursive=True):
@@ -306,10 +311,19 @@ class _CmdRunObject(_LoggerObject):
             raise Exception('not valid bytes (%s)'%(repr(s)))
         return s
 
-    def __enqueue_output(self,out, queue,description,endq):
-        for line in iter(out.readline, b''):
-            transline = self.__trans_to_string(line)
-            queue.put(transline)
+    def __enqueue_output(self,out, queue,description,endq,linebuf):
+        if linebuf:
+            for line in iter(out.readline, b''):
+                transline = self.__trans_to_string(line)
+                queue.put(transline)
+        else:
+            while True:
+                line = out.read(1)
+                self.info('read no line feed [%s][%s]'%(description,line))
+                if line is None or len(line) == 0:
+                    break
+                transline = self.__trans_to_string(line)
+                queue.put(transline)
         endq.put('done')
         endq.task_done()
         return
@@ -320,7 +334,7 @@ class _CmdRunObject(_LoggerObject):
             assert(self.endout is None)
             self.endout = Queue.Queue()
             assert(self.tout is None)
-            self.tout = threading.Thread(target=self.__enqueue_output,args=(self.__p.stdout,self.recvq,'stdout',self.endout))
+            self.tout = threading.Thread(target=self.__enqueue_output,args=(self.__p.stdout,self.recvq,'stdout',self.endout,self.__linebuf))
         return
 
     def __prepare_err(self):
@@ -330,7 +344,7 @@ class _CmdRunObject(_LoggerObject):
             assert(self.enderr is None)
             self.enderr = Queue.Queue()
             assert(self.terr is None)
-            self.terr = threading.Thread(target=self.__enqueue_output,args=(self.__p.stderr,self.recvq,'stderr',self.enderr))
+            self.terr = threading.Thread(target=self.__enqueue_output,args=(self.__p.stderr,self.recvq,'stderr',self.enderr,self.__linebuf))
         return
 
     def __start_out(self):
@@ -353,9 +367,9 @@ class _CmdRunObject(_LoggerObject):
             f = None
         return
 
-    def __init__(self,cmd,stdoutfile,stderrfile,shellmode,copyenv,autoclosefds=[]):
+    def __init__(self,cmd,stdoutfile,stderrfile,shellmode,copyenv,autoclosefds=[],linebuf=True):
         super(_CmdRunObject,self).__init__('cmdpack')
-        self.__p = run_read_cmd(cmd,stdoutfile,stderrfile,shellmode,copyenv)
+        self.__p = run_read_cmd(cmd,stdoutfile,stderrfile,shellmode,copyenv,linebuf)
         self.__closefiles=autoclosefds
         self.terr = None
         self.tout = None
@@ -365,6 +379,7 @@ class _CmdRunObject(_LoggerObject):
         self.recvq = None
         self.enderr = None
         self.endout = None
+        self.__linebuf= linebuf
         self.__prepare_out()
         self.__prepare_err()
         self.__start_out()
@@ -612,13 +627,13 @@ class _CmdRunObject(_LoggerObject):
         return self.__clean_resource()
 
 
-def run_command_callback(cmd,callback,ctx,stdoutfile=subprocess.PIPE,stderrfile=None,shellmode=True,copyenv=None):
-    cmdobj = _CmdRunObject(cmd,stdoutfile,stderrfile,shellmode,copyenv,[])
+def run_command_callback(cmd,callback,ctx,stdoutfile=subprocess.PIPE,stderrfile=None,shellmode=True,copyenv=None,linebuf=True):
+    cmdobj = _CmdRunObject(cmd,stdoutfile,stderrfile,shellmode,copyenv,[],linebuf)
     cmdobj.call_readback(callback,ctx)
     return cmdobj.get_exitcode()
 
 
-def run_cmd_output(cmd,stdout=True,stderr=False,shellmode=True,copyenv=None):
+def run_cmd_output(cmd,stdout=True,stderr=False,shellmode=True,copyenv=None,linebuf=True):
     stdouttype = type(stdout)
     autoclosefds = []
     if isinstance(stdout,bool):
@@ -644,7 +659,7 @@ def run_cmd_output(cmd,stdout=True,stderr=False,shellmode=True,copyenv=None):
         autoclosefds.append(stderrfile)
     else:
         stderrfile=stderr
-    return _CmdRunObject(cmd,stdoutfile,stderrfile,shellmode,copyenv,autoclosefds)
+    return _CmdRunObject(cmd,stdoutfile,stderrfile,shellmode,copyenv,autoclosefds,linebuf)
 
 
 
@@ -727,6 +742,22 @@ def error_out(args):
 
 def error_err(args):
     error_put(args,sys.stderr)
+    return
+
+def noret_put(wtime,args,fout=sys.stdout):
+    for c in args:
+        fout.write('%s'%(c))
+        fout.flush()
+        if wtime > 0.01:
+            time.sleep(wtime)
+    return
+
+def norettime_out(args):
+    noret_put(float(args[0]),args[1:],sys.stdout)
+    return
+
+def norettime_err(args):
+    noret_put(float(args[0]),args[1:],sys.stderr)
     return
 
 ##handleoutend
@@ -1178,6 +1209,48 @@ class debug_cmdpack_case(unittest.TestCase):
         self.assertFalse(exitcode == 0)
         return
 
+    def test_A018(self):
+        cmds = []
+        cmds.append('%s'%(sys.executable))
+        cmds.append(__file__)
+        cmds.append('norettimeout')
+        cmds.append('5.0')
+        outcon = []    
+        hellostr = 'hello'
+        outcon.append(hellostr)
+        outcon.append('world')
+        cmds.extend(outcon)
+        p = run_cmd_output(cmds,linebuf=False)
+        rlines = p.get_lines(1.0,10)
+        self.assertEqual(len(rlines),5)
+        for idx in range(len(rlines)):
+            self.assertEqual(rlines[idx], hellostr[idx])
+        attr = CmdObjectAttr()
+        attr.maxwtime = 0.1
+        exitcode = p.get_exitcode(attr)
+        return
+
+    def test_A019(self):
+        cmds = []
+        cmds.append('%s'%(sys.executable))
+        cmds.append(__file__)
+        cmds.append('norettimeerr')
+        cmds.append('5.0')
+        outcon = []    
+        hellostr = 'hello'
+        outcon.append(hellostr)
+        outcon.append('world')
+        cmds.extend(outcon)
+        p = run_cmd_output(cmds,stdout=False,stderr=True,linebuf=False)
+        rlines = p.get_lines(1.0,10)
+        self.assertEqual(len(rlines),5)
+        for idx in range(len(rlines)):
+            self.assertEqual(rlines[idx], hellostr[idx])
+        attr = CmdObjectAttr()
+        attr.maxwtime = 0.1
+        exitcode = p.get_exitcode(attr)
+        return
+
 
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__),'..','..')))
@@ -1238,6 +1311,12 @@ def main():
         return
     elif len(sys.argv) > 1 and sys.argv[1] == 'errorerr':
         error_err(sys.argv[2:])
+        return
+    elif len(sys.argv) > 1 and sys.argv[1] == 'norettimeout':
+        norettime_out(sys.argv[2:])
+        return
+    elif len(sys.argv) > 1 and sys.argv[1] == 'norettimeerr':
+        norettime_err(sys.argv[2:])
         return
 
     if '--release' in sys.argv[1:]:

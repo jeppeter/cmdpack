@@ -179,6 +179,15 @@ def errorout_handler(args,parser):
 def errorerr_handler(args,parser):
 	error_put(args.subnargs,sys.stderr)
 	return
+
+def norettimeout_handler(args,parser):
+	noret_put(float(args.subnargs[0]),args.subnargs[1:],sys.stdout)
+	return
+
+def norettimeerr_handler(args,parser):
+	noret_put(float(args.subnargs[0]),args.subnargs[1:],sys.stderr)
+	return
+
 	
 def main():
 	outputfile_orig = os.path.join(os.path.dirname(os.path.abspath(__file__)),'release.py')
@@ -215,6 +224,12 @@ def main():
 			},
 			"errorerr<errorerr_handler>" : {
 				"$" : "*"
+			},
+			"norettimeout<norettimeout_handler>" : {
+				"$" : "+"
+			},
+			"norettimeerr<norettimeerr_handler>" : {
+				"$" : "+"
 			}
 		}
 	'''
