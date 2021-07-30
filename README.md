@@ -2,6 +2,7 @@
 > python package for cmd run
 
 ### Release History
+* Jul 30th 2021 Release 0.5.2 to add is_running for _CmdRunObject
 * May 14th 2021 Release 0.5.0 to make linebuf attribute in CmdObjectAttr to get lines with not return just get
 * May 13th 2021 Release 0.4.8 to add get_lines method for CmdObjectAttr to get lines in timeout
 * Mar 29th 2017 Release 0.4.6 fixup bug when call shell quote string

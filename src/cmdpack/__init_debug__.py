@@ -423,6 +423,25 @@ class _CmdRunObject(_LoggerObject):
                 # wait for a time
                 self.info('will wait')
                 time.sleep(0.1)
+            while (not self.errended) or (not self.outended):
+                if not self.errended:
+                    try:
+                        rl = self.enderr.get_nowait()
+                        if rl == 'done':
+                            self.errended = True
+                            self.enderr.join()
+                            self.enderr = None
+                    except Queue.Empty:
+                        pass
+                if not self.outended:
+                    try:
+                        rl = self.endout.get_nowait()
+                        if rl == 'done':
+                            self.outended = True
+                            self.endout.join()
+                            self.endout = None
+                    except Queue.Empty:
+                        pass
             if self.__p.stdout is not None:
                 self.__p.stdout.close()
                 self.__p.stdout = None
@@ -654,7 +673,9 @@ class _CmdRunObject(_LoggerObject):
 
     def __del__(self):
         # we do not clean_resource because on here we do not any more
-        self.__kill_proc()
+        attr = CmdObjectAttr()
+        attr.maxwtime = 0.01
+        self.__kill_proc(attr)
         self.__clean_resource()
         return
 
@@ -666,10 +687,7 @@ class _CmdRunObject(_LoggerObject):
         if self.__p is not None:
             pret = self.__p.poll()
             if pret is not None:
-                attr = CmdObjectAttr()
-                attr.maxwtime = 0.1
-                self.__retcode = pret
-                self.__kill_proc(attr)
+                self.__get_exitcode()
                 return False
             return True
         return False
@@ -1308,7 +1326,8 @@ class debug_cmdpack_case(unittest.TestCase):
         outcon = []    
         hellostr = 'hello'
         outcon.append(hellostr)
-        outcon.append('world')
+        worldstr = 'world'
+        outcon.append(worldstr)
         cmds.extend(outcon)
         p = run_cmd_output(cmds,stdout=False,stderr=True,linebuf=False)
         stime = time.time()
@@ -1320,6 +1339,10 @@ class debug_cmdpack_case(unittest.TestCase):
             if not p.is_running():
                 break
             time.sleep(0.1)
+        rlines = p.get_lines(1.0,len(worldstr) + 10)
+        self.assertEqual(len(rlines),len(worldstr))        
+        for idx in range(len(rlines)):
+            self.assertEqual(rlines[idx], worldstr[idx])
         etime = time.time()
         self.assertTrue((etime - stime) > 9.9)
         del p
