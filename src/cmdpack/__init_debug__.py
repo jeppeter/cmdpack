@@ -400,7 +400,12 @@ class _CmdRunObject(_LoggerObject):
 
     def __wait_recvq(self):
         if self.recvq is not None:
-            assert(self.recvq.empty())
+            while not self.recvq.empty():
+                try:
+                    rl = self.recvq.get_nowait()
+                    self.info('get [%s]'%(rl))
+                except Queue.Empty:
+                    pass
             # nothing to be done
             self.recvq = None
         return
@@ -538,11 +543,44 @@ class _CmdRunObject(_LoggerObject):
                     if not self.errended or not self.outended:
                         # sleep for a while to get 
                         time.sleep(0.1)
+        else:
+            notempty = True
+            while len(retlines) < minlines and notempty:
+                try:
+                    if self.recvq is not None:
+                        rl = self.recvq.get_nowait()
+                        retlines.append(rl)
+                    else:
+                        notempty = False
+                except Queue.Empty:
+                    notempty = False
+                    if not self.outended:
+                        try:
+                            rl = self.endout.get_nowait()
+                            if rl == 'done':
+                                self.outended = True
+                                self.endout.join()
+                                self.endout = None
+                        except Queue.Empty:
+                            pass
+                    if not self.errended:
+                        try:
+                            rl = self.enderr.get_nowait()
+                            if rl == 'done':
+                                self.errended = True
+                                self.enderr.join()
+                                self.enderr = None
+                        except Queue.Empty:
+                            pass
         return retlines
 
 
 
     def __clean_resource(self):
+        while True:
+            rlines = self.get_lines(0.1,100)
+            if len(rlines) == 0:
+                break
         self.__wait_out()
         self.__wait_err()
         self.__wait_recvq()
@@ -585,46 +623,56 @@ class _CmdRunObject(_LoggerObject):
             while True:
                 if self.errended and self.outended:
                     break
-                try:
-                    rl = self.recvq.get_nowait()
-                    self.info('rl (%s)'%(rl.rstrip('\r\n')))
-                except Queue.Empty:
-                    if not self.errended:
-                        try:
-                            rl = self.enderr.get_nowait()
-                            if rl == 'done':
-                                self.errended = True
-                                self.enderr.join()
-                                self.enderr = None
-                        except Queue.Empty:
-                            pass
-                    if not self.outended :
-                        try:
-                            rl = self.endout.get_nowait()
-                            if rl == 'done':
-                                self.outended = True
-                                self.endout.join()
-                                self.endout = None
-                        except Queue.Empty:
-                            pass
-                    if not self.errended or not self.outended:
-                        # sleep for a while to get 
-                        if maxwtime is not None:
-                            ctime = time.time()
-                            if (ctime - stime) > maxwtime:
-                                self.info('[%s] kill[%s]'%(ctime,self.__p.pid))
-                                self.__kill_proc_childs(self.__p.pid)
-                        time.sleep(0.1)
+                if not self.errended:
+                    try:
+                        rl = self.enderr.get_nowait()
+                        if rl == 'done':
+                            self.errended = True
+                            self.enderr.join()
+                            self.enderr = None
+                    except Queue.Empty:
+                        pass
+                if not self.outended:
+                    try:
+                        rl = self.endout.get_nowait()
+                        if rl == 'done':
+                            self.outended = True
+                            self.endout.join()
+                            self.endout = None
+                    except Queue.Empty:
+                        pass
+                if not self.errended or not self.outended:
+                    # sleep for a while to get 
+                    if maxwtime is not None:
+                        ctime = time.time()
+                        if (ctime - stime) > maxwtime:
+                            self.info('[%s] kill[%s]'%(ctime,self.__p.pid))
+                            self.__kill_proc_childs(self.__p.pid)
+                    time.sleep(0.1)
         self.__retcode = exitcode
         return exitcode
 
     def __del__(self):
         # we do not clean_resource because on here we do not any more
+        self.__kill_proc()
+        self.__clean_resource()
         return
 
     def get_exitcode(self,attr=None):
         self.__kill_proc(attr)
         return self.__clean_resource()
+
+    def is_running(self):
+        if self.__p is not None:
+            pret = self.__p.poll()
+            if pret is not None:
+                attr = CmdObjectAttr()
+                attr.maxwtime = 0.1
+                self.__retcode = pret
+                self.__kill_proc(attr)
+                return False
+            return True
+        return False
 
 
 def run_command_callback(cmd,callback,ctx,stdoutfile=subprocess.PIPE,stderrfile=None,shellmode=True,copyenv=None,linebuf=True):
@@ -1249,6 +1297,32 @@ class debug_cmdpack_case(unittest.TestCase):
         attr = CmdObjectAttr()
         attr.maxwtime = 0.1
         exitcode = p.get_exitcode(attr)
+        return
+
+    def test_A020(self):
+        cmds = []
+        cmds.append('%s'%(sys.executable))
+        cmds.append(__file__)
+        cmds.append('norettimeerr')
+        cmds.append('5.0')
+        outcon = []    
+        hellostr = 'hello'
+        outcon.append(hellostr)
+        outcon.append('world')
+        cmds.extend(outcon)
+        p = run_cmd_output(cmds,stdout=False,stderr=True,linebuf=False)
+        stime = time.time()
+        rlines = p.get_lines(1.0,10)
+        self.assertEqual(len(rlines),5)
+        for idx in range(len(rlines)):
+            self.assertEqual(rlines[idx], hellostr[idx])
+        while True:
+            if not p.is_running():
+                break
+            time.sleep(0.1)
+        etime = time.time()
+        self.assertTrue((etime - stime) > 9.9)
+        del p
         return
 
 
